@@ -1,11 +1,17 @@
 import numpy as np
-import scipy.sparse as sp
+import scipy.sparse as sparse
+import scipy.linalg as linalg
 import os
 import pandas as pd
 import click
 import shutil
 
 # want triu with csr
+
+
+def combine_matrices(matrices):
+    columns = [column for matrix in matrices for column in matrix.columns]
+    return pd.DataFrame(linalg.block_diag(*matrices), columns=columns, index=columns)
 
 
 def reduce_submatrix(sparse_mat, start_ind, end_ind, precision):
@@ -26,19 +32,26 @@ def adjust_to_zero(sparse_matrix, precision):
     return sparse_matrix
 
 
-def convert(infile, outfile, block_size, precision):
-    start_snip, end_snip = [int(x) for x in infile.split("_")[-2:]]
-    dir = outfile + f"_{block_size}_{precision}/"
-    if not os.path.exists(dir):
-        os.mkdir(dir)
-    sparse_mat = sp.triu(sp.load_npz(infile + ".npz").T, format="csr")
-    # sparse_mat.setdiag(1) #leave as 0.5 for easier symmetric construction
+def convert(infile, outdir, block_size, precision=0):
+    base_infile = os.path.splitext(infile)[0]
+    filename = base_infile.split("/")[-1]
+    chromosome, start_snip, end_snip = filename.split("_")
+    start_snip, end_snip = int(start_snip), int(end_snip)
+    chromosome_dir = os.path.join(outdir, chromosome + f"_{precision}")
+    if not os.path.exists(chromosome_dir):
+        os.makedirs(chromosome_dir)
+    outdir = os.path.join(chromosome_dir, f"{start_snip}_{end_snip}")
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+    sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
     mat_size = sparse_mat.shape[0]
 
-    shutil.copy(infile + ".gz", dir + "metadata.gz")
-    pd.DataFrame([start_snip, end_snip, block_size]).to_csv(
-        dir + "META", index=False, header=False
-    )
+    shutil.copy(base_infile + ".gz", os.path.join(outdir, "metadata.gz"))
+
+    pd.DataFrame(
+        [[start_snip, end_snip, block_size, precision]],
+        columns=["start_snip", "end_snip", "block_size", "precision"],
+    ).to_csv(os.path.join(outdir, "META"), index=False)
 
     for i in range(0, mat_size, block_size):
         if i + block_size < mat_size:
@@ -48,23 +61,21 @@ def convert(infile, outfile, block_size, precision):
                 off_diagonal, precision
             )  # or is tocoo() better?
             print(f"Writing off diagonal {i}")
-            sp.save_npz(dir + f"row_{i}", off_diagonal, compressed=True)
+            sparse.save_npz(
+                os.path.join(outdir, f"row_{i}"), off_diagonal, compressed=True
+            )
             print("Finished writing")
 
         reduced = reduce_submatrix(
             sparse_mat, i, i + block_size, precision
         )  # allow precision?
         print(f"Writing block {i}")
-        sp.save_npz(dir + f"block_{i}", reduced, compressed=True)
+        sparse.save_npz(os.path.join(outdir, f"block_{i}"), reduced, compressed=True)
         print("Finished writing")
 
 
 def get_metadata(dir):
-    metadata = pd.read_csv(dir + "/META", header=None)
-    start_snip = metadata[0][0]
-    end_snip = metadata[0][1]
-    block_size = metadata[0][2]
-    return start_snip, end_snip, block_size
+    return pd.read_csv(dir + "/META").iloc[0]
 
 
 def load_snips_df(dir):
@@ -101,14 +112,71 @@ def load_snips_df(dir):
     return df_ld_snps
 
 
+def find_interval_index(val, intervals, start_index):
+    index = start_index
+    start_snip, end_snip = intervals[start_index]
+    while val >= end_snip:
+        index += 1
+        if index == len(intervals):
+            return None
+        start_snip, end_snip = intervals[index]
+    return index
+
+
+def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):
+    i_list = sorted(i_list)
+    j_list = sorted(j_list)
+    ind_list = sorted(set(i_list + j_list))
+
+    # need to find all intervals and compare
+
+    intervals = []
+    for subdir in [x[0] for x in os.walk(chromosome_dir)][1:]:
+        dirname = subdir.split("/")[-1]
+        start, end = dirname.split("_")
+        intervals.append((int(start), int(end)))
+
+    intervals.sort(key=lambda x: x[0])
+
+    submatrices = []
+    prev = 0
+    interval_ind = find_interval_index(ind_list[0], intervals, 0)
+    start_snip, end_snip = intervals[interval_ind]
+    for i, ind in enumerate(ind_list):
+        if ind >= end_snip:
+            submatrices.append(
+                get_submatrix_by_indices(
+                    os.path.join(chromosome_dir, f"{start_snip}_{end_snip}"),
+                    ind_list[prev:i],
+                    ind_list[prev:i],
+                )
+            )
+            prev = i
+            interval_ind = find_interval_index(ind, intervals, interval_ind)
+            start_snip, end_snip = intervals[interval_ind]
+
+    submatrices.append(
+        get_submatrix_by_indices(
+            os.path.join(chromosome_dir, f"{start_snip}_{end_snip}"),
+            ind_list[prev:],
+            ind_list[prev:],
+        )
+    )
+    return combine_matrices(submatrices)
+
+
 def get_submatrix_by_indices(dir, i_list, j_list):
     i_list = sorted(i_list)
     j_list = sorted(j_list)
 
     ind_list = sorted(set(i_list + j_list))
 
-    start_snip, end_snip, block_size = get_metadata(dir)
-
+    metadata = get_metadata(dir)
+    start_snip, end_snip, block_size = (
+        metadata.start_snip,
+        metadata.end_snip,
+        metadata.block_size,
+    )
     df_ld_snps = load_snips_df(dir)
 
     ind_temp = df_ld_snps[df_ld_snps.BP.isin(ind_list)].relative_pos
@@ -129,13 +197,13 @@ def get_submatrix_by_indices(dir, i_list, j_list):
 
         row = [np.zeros((len(local_inds), len(early_inds)))]
 
-        block_matrix = sp.load_npz(
+        block_matrix = sparse.load_npz(
             f"{dir}/block_{block}.npz"
         )  # could be avoided when selecting non overlapping
         row.append(block_matrix[np.ix_(local_ind_offsets, local_ind_offsets)].todense())
 
         if len(late_inds):
-            aux_matrix = sp.load_npz(f"{dir}/row_{block}.npz")
+            aux_matrix = sparse.load_npz(f"{dir}/row_{block}.npz")
             row.append(
                 aux_matrix[
                     np.ix_(local_ind_offsets, late_inds - (block + block_size))
@@ -144,6 +212,8 @@ def get_submatrix_by_indices(dir, i_list, j_list):
 
         rows.append(np.hstack(row))
 
+    if not len(rows):
+        return pd.DataFrame()
     triangular = np.vstack(rows)
     full = triangular + triangular.T
 

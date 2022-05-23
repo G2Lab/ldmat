@@ -16,6 +16,9 @@ def reduce_submatrix(sparse_mat, start_ind, end_ind, precision):
 
 def adjust_to_zero(sparse_matrix, precision):
     if precision:
+
+
+
         nonzeros = sparse_matrix.nonzero()
         nonzero_mask = np.array(np.abs(sparse_matrix[nonzeros]) < precision)[0]
         rows = nonzeros[0][nonzero_mask]

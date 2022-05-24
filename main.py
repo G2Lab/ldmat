@@ -169,27 +169,22 @@ def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):
     return combine_matrices(submatrices)
 
 
-def get_submatrix_by_indices(dir, i_list, j_list):
-    i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
-
+def load_symmetric_matrix(dir, index_df):
     metadata = get_metadata(dir)
     start_snip, end_snip, block_size = (
         metadata.start_snip,
         metadata.end_snip,
         metadata.block_size,
     )
-    df_ld_snps = load_snips_df(dir)
 
-    ind_temp = df_ld_snps[df_ld_snps.BP.isin(ind_list)].relative_pos
-
-    ind_blocks = ind_temp.floordiv(block_size) * block_size
+    ind_blocks = index_df.floordiv(block_size) * block_size
 
     rows = []
 
     for block in range(0, end_snip - start_snip, block_size):
-        early_inds = ind_temp[ind_blocks < block]
-        local_inds = ind_temp[ind_blocks == block]
-        late_inds = ind_temp[ind_blocks > block]
+        early_inds = index_df[ind_blocks < block]
+        local_inds = index_df[ind_blocks == block]
+        late_inds = index_df[ind_blocks > block]
 
         if len(local_inds) == 0:
             continue
@@ -214,25 +209,49 @@ def get_submatrix_by_indices(dir, i_list, j_list):
         rows.append(np.hstack(row))
 
     if not len(rows):
-        return pd.DataFrame()
+        return np.empty((0, 0))
     triangular = np.vstack(rows)
-    full = triangular + triangular.T
+    return triangular + triangular.T
+
+
+def construct_labeled_df(
+    full_matrix, df_ld_snps, i_index_df, j_index_df, combined_index_df
+):
+    ld_snps_ind = df_ld_snps.iloc[combined_index_df].index
+
+    # should reduce size before creating DF
+    df = pd.DataFrame(full_matrix, index=ld_snps_ind, columns=ld_snps_ind)
+    return df.loc[df_ld_snps.iloc[j_index_df].index, df_ld_snps.iloc[i_index_df].index]
+
+
+def get_submatrix_by_indices(dir, i_list, j_list):
+    i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
+
+    df_ld_snps = load_snips_df(dir)
+
+    ind_temp = df_ld_snps[df_ld_snps.BP.isin(ind_list)].relative_pos
 
     i_temp = df_ld_snps[df_ld_snps.BP.isin(i_list)].relative_pos
     j_temp = df_ld_snps[df_ld_snps.BP.isin(j_list)].relative_pos
 
-    ld_snps_ind = df_ld_snps.iloc[ind_temp].index
-
-    return pd.DataFrame(
-        full[np.ix_(j_temp, i_temp)],
-        index=ld_snps_ind[j_temp],
-        columns=ld_snps_ind[i_temp],
+    return construct_labeled_df(
+        load_symmetric_matrix(dir, ind_temp), df_ld_snps, i_temp, j_temp, ind_temp
     )
 
 
 def get_submatrix_by_ranges(dir, i_start, i_end, j_start, j_end):
-    # optimize for ranges (skip sorting, etc.)
-    return get_submatrix_by_indices(dir, range(i_start, i_end), range(j_start, j_end))
+    df_ld_snps = load_snips_df(dir)
+
+    ind_temp = df_ld_snps[
+        df_ld_snps.BP.between(i_start, i_end) | df_ld_snps.BP.between(j_start, j_end)
+    ].relative_pos
+
+    i_temp = df_ld_snps[df_ld_snps.BP.between(i_start, i_end)].relative_pos
+    j_temp = df_ld_snps[df_ld_snps.BP.between(j_start, j_end)].relative_pos
+
+    return construct_labeled_df(
+        load_symmetric_matrix(dir, ind_temp), df_ld_snps, i_temp, j_temp, ind_temp
+    )
 
 
 def get_value_at_index(dir, i, j):

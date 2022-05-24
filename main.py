@@ -7,8 +7,6 @@ import click
 import shutil
 from heapq import merge
 
-# want triu with csr
-
 
 def sort_and_combine_lists(a, b):
     sorted_a, sorted_b = sorted(set(a)), sorted(set(b))
@@ -152,7 +150,6 @@ def get_submatrix_from_chromosome_by_range(
     for interval in intervals:
         i_overlap = find_overlap((i_start, i_end), interval)
         j_overlap = find_overlap((j_start, j_end), interval)
-        # overlaps = [find_overlap(index, interval) for index in combined_index]
         if i_overlap or j_overlap:
             i_overlap = i_overlap or (-1, -1)
             j_overlap = j_overlap or (-1, -1)
@@ -305,9 +302,14 @@ def get_value_at_index(dir, i, j):
 @click.option("--j_start", type=int)
 @click.option("--j_end", type=int)
 @click.option("--outfile", "-o", default=None)
-def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile):
-    res = get_submatrix_from_chromosome(
-        chromosome_dir, range(i_start, i_end), range(j_start, j_end)
+@click.option("--symmetric", "-s", is_flag=True, default=False)
+def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric):
+    if symmetric and (j_start is not None or j_end is not None):
+        raise ValueError("Symmetric flag only compatible with i indexing.")
+    if symmetric:
+        j_start, j_end = i_start, i_end
+    res = get_submatrix_from_chromosome_by_range(
+        chromosome_dir, i_start, i_end, j_start, j_end
     )
     if outfile:
         res.to_csv(outfile)
@@ -317,3 +319,5 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile):
 
 if __name__ == "__main__":
     submatrix()
+
+# example: python3 main.py data/processed/chr1_0 --i_start 10000 --i_end 100000 -s -o /tmp/test.csv

@@ -5,8 +5,14 @@ import os
 import pandas as pd
 import click
 import shutil
+from heapq import merge
 
 # want triu with csr
+
+
+def sort_and_combine_lists(a, b):
+    sorted_a, sorted_b = sorted(set(a)), sorted(set(b))
+    return sorted_a, sorted_b, list(merge(sorted_a, sorted_b))
 
 
 def combine_matrices(matrices):
@@ -124,9 +130,7 @@ def find_interval_index(val, intervals, start_index):
 
 
 def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):
-    i_list = sorted(i_list)
-    j_list = sorted(j_list)
-    ind_list = sorted(set(i_list + j_list))
+    i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
 
     # need to find all intervals and compare
 
@@ -166,10 +170,7 @@ def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):
 
 
 def get_submatrix_by_indices(dir, i_list, j_list):
-    i_list = sorted(i_list)
-    j_list = sorted(j_list)
-
-    ind_list = sorted(set(i_list + j_list))
+    i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
 
     metadata = get_metadata(dir)
     start_snip, end_snip, block_size = (
@@ -222,12 +223,15 @@ def get_submatrix_by_indices(dir, i_list, j_list):
 
     ld_snps_ind = df_ld_snps.iloc[ind_temp].index
 
-    # should reduce size before creating DF
-    df = pd.DataFrame(full, index=ld_snps_ind, columns=ld_snps_ind)
-    return df.loc[df_ld_snps.iloc[j_temp].index, df_ld_snps.iloc[i_temp].index]
+    return pd.DataFrame(
+        full[np.ix_(j_temp, i_temp)],
+        index=ld_snps_ind[j_temp],
+        columns=ld_snps_ind[i_temp],
+    )
 
 
 def get_submatrix_by_ranges(dir, i_start, i_end, j_start, j_end):
+    # optimize for ranges (skip sorting, etc.)
     return get_submatrix_by_indices(dir, range(i_start, i_end), range(j_start, j_end))
 
 
@@ -238,17 +242,22 @@ def get_value_at_index(dir, i, j):
 # maybe make an object
 
 
-# convert('data/chr1_194000001_197000001', 'data/chr1_194000001_197000001', 2000, .1)
+@click.command()
+@click.argument("chromosome_dir")
+@click.option("--i_start", type=int)
+@click.option("--i_end", type=int)
+@click.option("--j_start", type=int)
+@click.option("--j_end", type=int)
+@click.option("--outfile", "-o", default=None)
+def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile):
+    res = get_submatrix_from_chromosome(
+        chromosome_dir, range(i_start, i_end), range(j_start, j_end)
+    )
+    if outfile:
+        res.to_csv(outfile)
+    else:
+        print(res)
 
-dir = "data/chr1_194000001_197000001_2000_0.1"
-testrows = [194000205, 194000389, 194000398, 194021357, 194252729, 194806501, 195267072]
-limited_testrows = [194000205, 194000389, 194000398, 194021357, 194252729, 195267072]
 
-# submat = get_submatrix_fresh(dir, testrows, testrows)
-# row_only = make_symmetric(get_rows(dir, testrows)[submat.columns])
-#
-# submat2 = get_submatrix_fresh(dir, limited_testrows, limited_testrows)
-# reducedmat = get_submatrix_fresh(dir, limited_testrows, testrows)
-#
-# row_only = make_symmetric(get_rows(dir, testrows)[submat.columns])[reducedmat.columns]
-# final = get_submatrix_simple(dir, limited_testrows, testrows)
+if __name__ == "__main__":
+    submatrix()

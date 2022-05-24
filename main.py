@@ -17,7 +17,8 @@ def sort_and_combine_lists(a, b):
 
 def combine_matrices(matrices):
     columns = [column for matrix in matrices for column in matrix.columns]
-    return pd.DataFrame(linalg.block_diag(*matrices), columns=columns, index=columns)
+    index = [index for matrix in matrices for index in matrix.index]
+    return pd.DataFrame(linalg.block_diag(*matrices), columns=columns, index=index)
 
 
 def reduce_submatrix(sparse_mat, start_ind, end_ind, precision):
@@ -127,6 +128,42 @@ def find_interval_index(val, intervals, start_index):
             return None
         start_snip, end_snip = intervals[index]
     return index
+
+
+def find_overlap(a, b):
+    overlap = max(a[0], b[0]), min(a[1], b[1])
+    if overlap[1] < overlap[0]:
+        return None
+    return overlap
+
+
+def get_submatrix_from_chromosome_by_range(
+    chromosome_dir, i_start, i_end, j_start, j_end
+):
+    intervals = []
+    for subdir in [x[0] for x in os.walk(chromosome_dir)][1:]:
+        dirname = subdir.split("/")[-1]
+        start, end = dirname.split("_")
+        intervals.append((int(start), int(end)))
+
+    intervals.sort(key=lambda x: x[0])
+
+    submatrices = []
+    for interval in intervals:
+        i_overlap = find_overlap((i_start, i_end), interval)
+        j_overlap = find_overlap((j_start, j_end), interval)
+        # overlaps = [find_overlap(index, interval) for index in combined_index]
+        if i_overlap or j_overlap:
+            i_overlap = i_overlap or (-1, -1)
+            j_overlap = j_overlap or (-1, -1)
+            submatrices.append(
+                get_submatrix_by_ranges(
+                    os.path.join(chromosome_dir, f"{interval[0]}_{interval[1]}"),
+                    *i_overlap,
+                    *j_overlap,
+                )
+            )
+    return combine_matrices(submatrices)
 
 
 def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):

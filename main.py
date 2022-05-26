@@ -84,7 +84,21 @@ def convert(infile, outdir, block_size, precision=0):
 
 
 def get_metadata(dir):
-    return pd.read_csv(dir + "/META").iloc[0]
+    metadata = pd.read_csv(
+        dir + "/META",
+        dtype={
+            "start_snip": int,
+            "end_snip": int,
+            "block_size": int,
+            "precision": float,
+        },
+    )
+    return (
+        metadata.start_snip[0],
+        metadata.end_snip[0],
+        metadata.block_size[0],
+        metadata.precision[0],
+    )
 
 
 def load_snips_df(dir):
@@ -208,12 +222,7 @@ def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):
 
 
 def load_symmetric_matrix(dir, index_df):
-    metadata = get_metadata(dir)
-    start_snip, end_snip, block_size = (
-        metadata.start_snip,
-        metadata.end_snip,
-        metadata.block_size,
-    )
+    start_snip, end_snip, block_size, precision = get_metadata(dir)
 
     ind_blocks = index_df.floordiv(block_size) * block_size
 
@@ -234,9 +243,7 @@ def load_symmetric_matrix(dir, index_df):
         block_matrix = sparse.load_npz(
             f"{dir}/block_{block}.npz"
         )  # could be avoided when selecting non overlapping
-        block_submat = block_matrix[np.ix_(local_ind_offsets, local_ind_offsets)]
-        block_submat.setdiag(DIAGONAL_LD / 2)
-        row.append(block_submat.todense())
+        row.append(block_matrix[np.ix_(local_ind_offsets, local_ind_offsets)].todense())
 
         if len(late_inds):
             aux_matrix = sparse.load_npz(f"{dir}/row_{block}.npz")
@@ -251,7 +258,9 @@ def load_symmetric_matrix(dir, index_df):
     if not len(rows):
         return np.empty((0, 0))
     triangular = np.vstack(rows)
-    return triangular + triangular.T
+    symmetric = triangular + triangular.T
+    np.fill_diagonal(symmetric, DIAGONAL_LD)
+    return symmetric
 
 
 def construct_labeled_df(
@@ -301,7 +310,12 @@ def get_value_at_index(dir, i, j):
 # maybe make an object
 
 
-@click.command()
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
 @click.argument("chromosome_dir")
 @click.option("--i_start", type=int)
 @click.option("--i_end", type=int)
@@ -324,7 +338,16 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
         print(res)
 
 
+@cli.command()
+@click.argument("infile")
+@click.argument("outdir")
+@click.option("--block_size", "-b", type=int, default=2000)
+@click.option("--precision", "-p", type=float, default=0)
+def convert_file(infile, outdir, block_size, precision):
+    convert(infile, outdir, block_size, precision)
+
+
 if __name__ == "__main__":
-    submatrix()
+    cli()
 
 # example: python3 main.py data/processed/chr1_0 --i_start 10000 --i_end 100000 -s -o /tmp/test.csv

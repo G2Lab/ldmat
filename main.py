@@ -7,6 +7,8 @@ import click
 import shutil
 from heapq import merge
 
+DIAGONAL_LD = 1
+
 
 def sort_and_combine_lists(a, b):
     sorted_a, sorted_b = sorted(set(a)), sorted(set(b))
@@ -49,6 +51,8 @@ def convert(infile, outdir, block_size, precision=0):
     if not os.path.exists(outdir):
         os.mkdir(outdir)
     sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
+    sparse_mat.setdiag(0)
+    sparse_mat.eliminate_zeros()
     mat_size = sparse_mat.shape[0]
 
     shutil.copy(base_infile + ".gz", os.path.join(outdir, "metadata.gz"))
@@ -230,7 +234,9 @@ def load_symmetric_matrix(dir, index_df):
         block_matrix = sparse.load_npz(
             f"{dir}/block_{block}.npz"
         )  # could be avoided when selecting non overlapping
-        row.append(block_matrix[np.ix_(local_ind_offsets, local_ind_offsets)].todense())
+        block_submat = block_matrix[np.ix_(local_ind_offsets, local_ind_offsets)]
+        block_submat.setdiag(DIAGONAL_LD / 2)
+        row.append(block_submat.todense())
 
         if len(late_inds):
             aux_matrix = sparse.load_npz(f"{dir}/row_{block}.npz")
@@ -312,6 +318,7 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
         chromosome_dir, i_start, i_end, j_start, j_end
     )
     if outfile:
+        # name index?
         res.to_csv(outfile)
     else:
         print(res)

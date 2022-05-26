@@ -43,11 +43,10 @@ def adjust_to_zero(sparse_matrix, precision):
 
 
 def heuristic_block_size(matrix, precision, threshold=0.5):
-    step = (
-        min(UPPER_BOUND_HEURISTIC_STEP, int(1 / precision))
-        if precision
-        else UPPER_BOUND_HEURISTIC_STEP
-    )
+    if precision == 0:
+        step = UPPER_BOUND_HEURISTIC_STEP
+    else:
+        step = min(UPPER_BOUND_HEURISTIC_STEP, int(1 / precision))
     for i in range(step, matrix.shape[0], step):
         print(f"Checking diagonal {i}")
         if (np.count_nonzero(matrix.diagonal(i)) / i) < threshold:
@@ -55,7 +54,21 @@ def heuristic_block_size(matrix, precision, threshold=0.5):
     return DEFAULT_BLOCK_SIZE
 
 
-def convert(infile, outdir, block_size=None, precision=0):
+def log_block_size(matrix, precision):
+    if precision == 0:
+        step = UPPER_BOUND_HEURISTIC_STEP
+    else:
+        step = min(UPPER_BOUND_HEURISTIC_STEP, int(1 / precision))
+
+    lg = np.log(matrix.shape[0])
+    for i in range(step, matrix.shape[0], step):
+        print(f"Checking diagonal {i}")
+        if np.count_nonzero(matrix.diagonal(i)) < lg:
+            return max(i, MIN_BLOCK_SIZE)
+    return DEFAULT_BLOCK_SIZE
+
+
+def convert(infile, outdir, block_size=None, precision=0, heuristic=None):
     base_infile = os.path.splitext(infile)[0]
     filename = base_infile.split("/")[-1]
     chromosome, start_snip, end_snip = filename.split("_")
@@ -73,7 +86,10 @@ def convert(infile, outdir, block_size=None, precision=0):
 
     if not block_size:
         print("Calculating block size")
-        block_size = heuristic_block_size(sparse_mat, precision)
+        if heuristic == "log":
+            block_size = log_block_size(sparse_mat, precision)
+        else:
+            block_size = heuristic_block_size(sparse_mat, precision)
 
     shutil.copy(base_infile + ".gz", os.path.join(outdir, "metadata.gz"))
 
@@ -358,8 +374,9 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
 @click.argument("outdir")
 @click.option("--block_size", "-b", type=int, default=None)
 @click.option("--precision", "-p", type=float, default=0)
-def convert_file(infile, outdir, block_size, precision):
-    convert(infile, outdir, block_size, precision)
+@click.option("--heuristic", "-h", type=str, default=None)
+def convert_file(infile, outdir, block_size, precision, heuristic):
+    convert(infile, outdir, block_size, precision, heuristic)
 
 
 if __name__ == "__main__":

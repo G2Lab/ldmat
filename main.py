@@ -8,6 +8,9 @@ import shutil
 from heapq import merge
 
 DIAGONAL_LD = 1
+DEFAULT_BLOCK_SIZE = 2000
+MIN_BLOCK_SIZE = 100
+UPPER_BOUND_HEURISTIC_STEP = 100
 
 
 def sort_and_combine_lists(a, b):
@@ -39,7 +42,20 @@ def adjust_to_zero(sparse_matrix, precision):
     return sparse_matrix
 
 
-def convert(infile, outdir, block_size, precision=0):
+def heuristic_block_size(matrix, precision, threshold=0.5):
+    step = (
+        min(UPPER_BOUND_HEURISTIC_STEP, int(1 / precision))
+        if precision
+        else UPPER_BOUND_HEURISTIC_STEP
+    )
+    for i in range(step, matrix.shape[0], step):
+        print(f"Checking diagonal {i}")
+        if (np.count_nonzero(matrix.diagonal(i)) / i) < threshold:
+            return max(i, MIN_BLOCK_SIZE)
+    return DEFAULT_BLOCK_SIZE
+
+
+def convert(infile, outdir, block_size=None, precision=0):
     base_infile = os.path.splitext(infile)[0]
     filename = base_infile.split("/")[-1]
     chromosome, start_snip, end_snip = filename.split("_")
@@ -52,8 +68,12 @@ def convert(infile, outdir, block_size, precision=0):
         os.mkdir(outdir)
     sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
     sparse_mat.setdiag(0)
-    sparse_mat.eliminate_zeros()
+    sparse_mat = adjust_to_zero(sparse_mat, precision)
     mat_size = sparse_mat.shape[0]
+
+    if not block_size:
+        print("Calculating block size")
+        block_size = heuristic_block_size(sparse_mat, precision)
 
     shutil.copy(base_infile + ".gz", os.path.join(outdir, "metadata.gz"))
 
@@ -65,19 +85,14 @@ def convert(infile, outdir, block_size, precision=0):
     for i in range(0, mat_size, block_size):
         if i + block_size < mat_size:
             off_diagonal = sparse_mat[i : i + block_size, i + block_size :]
-
-            off_diagonal = adjust_to_zero(
-                off_diagonal, precision
-            )  # or is tocoo() better?
+            # or is tocoo() better?
             print(f"Writing off diagonal {i}")
             sparse.save_npz(
                 os.path.join(outdir, f"row_{i}"), off_diagonal, compressed=True
             )
             print("Finished writing")
 
-        reduced = reduce_submatrix(
-            sparse_mat, i, i + block_size, precision
-        )  # allow precision?
+        reduced = sparse_mat[i : i + block_size, i : i + block_size]
         print(f"Writing block {i}")
         sparse.save_npz(os.path.join(outdir, f"block_{i}"), reduced, compressed=True)
         print("Finished writing")
@@ -341,7 +356,7 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
 @cli.command()
 @click.argument("infile")
 @click.argument("outdir")
-@click.option("--block_size", "-b", type=int, default=2000)
+@click.option("--block_size", "-b", type=int, default=None)
 @click.option("--precision", "-p", type=float, default=0)
 def convert_file(infile, outdir, block_size, precision):
     convert(infile, outdir, block_size, precision)

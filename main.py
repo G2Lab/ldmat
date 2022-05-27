@@ -24,12 +24,6 @@ def combine_matrices(matrices):
     return pd.DataFrame(linalg.block_diag(*matrices), columns=columns, index=index)
 
 
-def reduce_submatrix(sparse_mat, start_ind, end_ind, precision):
-    submat = sparse_mat[start_ind:end_ind, start_ind:end_ind]
-
-    return adjust_to_zero(submat, precision)
-
-
 def adjust_to_zero(sparse_matrix, precision):
     if precision:
         nonzeros = sparse_matrix.nonzero()
@@ -212,7 +206,7 @@ def get_submatrix_from_chromosome_by_range(
     return combine_matrices(submatrices)
 
 
-def get_submatrix_from_chromosome(chromosome_dir, i_list, j_list):
+def get_submatrix_from_chromosome_by_list(chromosome_dir, i_list, j_list):
     i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
 
     # need to find all intervals and compare
@@ -294,14 +288,9 @@ def load_symmetric_matrix(dir, index_df):
     return symmetric
 
 
-def construct_labeled_df(
-    full_matrix, df_ld_snps, i_index_df, j_index_df, combined_index_df
-):
-    ld_snps_ind = df_ld_snps.iloc[combined_index_df].index
-
-    # should reduce size before creating DF
-    df = pd.DataFrame(full_matrix, index=ld_snps_ind, columns=ld_snps_ind)
-    return df.loc[df_ld_snps.iloc[j_index_df].index, df_ld_snps.iloc[i_index_df].index]
+def construct_labeled_df(full_matrix, i_index_df, j_index_df):
+    submatrix = full_matrix[np.ix_(j_index_df, i_index_df)]
+    return pd.DataFrame(submatrix, index=j_index_df.index, columns=i_index_df.index)
 
 
 def get_submatrix_by_indices(dir, i_list, j_list):
@@ -314,9 +303,7 @@ def get_submatrix_by_indices(dir, i_list, j_list):
     i_temp = df_ld_snps[df_ld_snps.BP.isin(i_list)].relative_pos
     j_temp = df_ld_snps[df_ld_snps.BP.isin(j_list)].relative_pos
 
-    return construct_labeled_df(
-        load_symmetric_matrix(dir, ind_temp), df_ld_snps, i_temp, j_temp, ind_temp
-    )
+    return construct_labeled_df(load_symmetric_matrix(dir, ind_temp), i_temp, j_temp)
 
 
 def get_submatrix_by_ranges(dir, i_start, i_end, j_start, j_end):
@@ -329,9 +316,7 @@ def get_submatrix_by_ranges(dir, i_start, i_end, j_start, j_end):
     i_temp = df_ld_snps[df_ld_snps.BP.between(i_start, i_end)].relative_pos
     j_temp = df_ld_snps[df_ld_snps.BP.between(j_start, j_end)].relative_pos
 
-    return construct_labeled_df(
-        load_symmetric_matrix(dir, ind_temp), df_ld_snps, i_temp, j_temp, ind_temp
-    )
+    return construct_labeled_df(load_symmetric_matrix(dir, ind_temp), i_temp, j_temp)
 
 
 def get_value_at_index(dir, i, j):

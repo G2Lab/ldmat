@@ -12,6 +12,17 @@ DEFAULT_BLOCK_SIZE = 2000
 MIN_BLOCK_SIZE = 100
 UPPER_BOUND_HEURISTIC_STEP = 100
 
+MAF_COLS = [
+    "Alternate_id",
+    "RS_id",
+    "Position",
+    "Allele1",
+    "Allele2",
+    "MAF",
+    "Minor Allele",
+    "Info Score",
+]
+
 
 def sort_and_combine_lists(a, b):
     sorted_a, sorted_b = sorted(set(a)), sorted(set(b))
@@ -207,6 +218,8 @@ def get_submatrix_from_chromosome_by_range(
 
 
 def get_submatrix_from_chromosome_by_list(chromosome_dir, i_list, j_list):
+    if len(i_list) == 0 or len(j_list) == 0:
+        return pd.DataFrame()
     i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
 
     # need to find all intervals and compare
@@ -323,6 +336,39 @@ def get_value_at_index(dir, i, j):
     return get_submatrix_by_indices(dir, [i], [j])
 
 
+def convert_maf(infile, outdir):
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+    base_infile = os.path.splitext(infile)[0]
+    filename = base_infile.split("/")[-1]
+    chromosome = filename.split("_")[-2]
+    outfile = os.path.join(outdir, chromosome + ".csv")
+
+    maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
+    maf = maf.sort_values("MAF")
+    maf[["Position", "MAF"]].to_csv(outfile, index=False)
+
+
+def get_maf_indices_by_range(maf_file, lower_bound, upper_bound):
+    # inclusive
+
+    maf = pd.read_csv(maf_file, index_col="Position")
+    start_index = maf.MAF.searchsorted(lower_bound)
+    while start_index > 0 and maf.MAF.iloc[start_index - 1] >= lower_bound:
+        start_index -= 1
+
+    end_index = maf.MAF.searchsorted(upper_bound)
+    while end_index < len(maf) and maf.MAF.iloc[end_index + 1] <= upper_bound:
+        end_index += 1
+
+    return list(maf.index[start_index:end_index])
+
+
+def get_submatrix_by_maf_range(dir, maf_file, lower_bound, upper_bound):
+    indices = get_maf_indices_by_range(maf_file, lower_bound, upper_bound)
+    return get_submatrix_from_chromosome_by_list(dir, indices, indices)
+
+
 # maybe make an object
 
 
@@ -362,6 +408,21 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
 @click.option("--heuristic", "-h", type=str, default=None)
 def convert_file(infile, outdir, block_size, precision, heuristic):
     convert(infile, outdir, block_size, precision, heuristic)
+
+
+@cli.command()
+@click.argument("chromosome_dir")
+@click.argument("maf_file")
+@click.option("--lower_bound", "-l", type=float, default=0)
+@click.option("--upper_bound", "-u", type=float, default=0.5)
+@click.option("--outfile", "-o", default=None)
+def submatrix_by_maf(chromosome_dir, maf_file, lower_bound, upper_bound, outfile):
+    res = get_submatrix_by_maf_range(chromosome_dir, maf_file, lower_bound, upper_bound)
+    if outfile:
+        # name index?
+        res.to_csv(outfile)
+    else:
+        print(res)
 
 
 if __name__ == "__main__":

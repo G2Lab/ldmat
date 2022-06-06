@@ -247,6 +247,9 @@ def get_submatrix_from_chromosome_by_list(chromosome_dir, i_list, j_list):
             )
             prev = i
             interval_ind = find_interval_index(ind, intervals, interval_ind)
+            if interval_ind is None:
+                # can end early
+                return combine_matrices(submatrices)
             start_snip, end_snip = intervals[interval_ind]
 
     submatrices.append(
@@ -302,7 +305,8 @@ def load_symmetric_matrix(dir, index_df):
 
 
 def construct_labeled_df(full_matrix, i_index_df, j_index_df):
-    submatrix = full_matrix[np.ix_(j_index_df, i_index_df)]
+    # submatrix = full_matrix[np.ix_(j_index_df, i_index_df)]
+    submatrix = full_matrix[: len(j_index_df), : len(i_index_df)]
     return pd.DataFrame(submatrix, index=j_index_df.index, columns=i_index_df.index)
 
 

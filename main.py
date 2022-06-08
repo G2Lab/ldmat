@@ -6,6 +6,7 @@ import pandas as pd
 import click
 import shutil
 from heapq import merge
+import h5py
 
 DIAGONAL_LD = 1
 DEFAULT_BLOCK_SIZE = 2000
@@ -30,6 +31,7 @@ def sort_and_combine_lists(a, b):
 
 
 def combine_matrices(matrices):
+    print("Combining matrices")
     columns = [column for matrix in matrices for column in matrix.columns]
     index = [index for matrix in matrices for index in matrix.index]
     return pd.DataFrame(linalg.block_diag(*matrices), columns=columns, index=index)
@@ -73,7 +75,7 @@ def log_block_size(matrix, precision):
     return DEFAULT_BLOCK_SIZE
 
 
-def convert(infile, outdir, block_size=None, precision=0, heuristic=None):
+def convert(infile, outdir, block_size=None, precision=0, heuristic=None, decimals=3):
     base_infile = os.path.splitext(infile)[0]
     filename = base_infile.split("/")[-1]
     chromosome, start_snip, end_snip = filename.split("_")
@@ -86,6 +88,7 @@ def convert(infile, outdir, block_size=None, precision=0, heuristic=None):
         os.mkdir(outdir)
     sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
     sparse_mat.setdiag(0)
+    sparse_mat.data = np.round(sparse_mat.data, decimals)
     sparse_mat = adjust_to_zero(sparse_mat, precision)
     mat_size = sparse_mat.shape[0]
 
@@ -119,6 +122,77 @@ def convert(infile, outdir, block_size=None, precision=0, heuristic=None):
         print("Finished writing")
 
 
+def convert_h5(
+    infile, outfile, block_size=None, precision=0, heuristic=None, decimals=3
+):
+    base_infile = os.path.splitext(infile)[0]
+    filename = base_infile.split("/")[-1]
+    chromosome, start_snip, end_snip = filename.split("_")
+    start_snip, end_snip = int(start_snip), int(end_snip)
+
+    f = h5py.File(outfile, "a")
+
+    group = f.require_group(f"{chromosome}/snips_{start_snip}_{end_snip}")
+
+    sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
+    sparse_mat.setdiag(0)
+    sparse_mat.data = np.round(sparse_mat.data, decimals)
+    sparse_mat = adjust_to_zero(sparse_mat, precision)
+    mat_size = sparse_mat.shape[0]
+
+    if not block_size:
+        print("Calculating block size")
+        if heuristic == "log":
+            block_size = log_block_size(sparse_mat, precision)
+        else:
+            block_size = heuristic_block_size(sparse_mat, precision)
+
+    pos_df = metadata_to_df(base_infile + ".gz")
+    group.require_dataset(
+        "positions",
+        data=pos_df,
+        compression="gzip",
+        shape=pos_df.shape,
+        dtype=pos_df.dtypes[0],
+    )
+    names = pos_df.index.to_numpy().astype("S")
+    group.create_dataset("names", data=names, compression="gzip")
+
+    group.attrs["start_snip"] = start_snip
+    group.attrs["end_snip"] = end_snip
+    group.attrs["block_size"] = block_size
+    group.attrs["precision"] = precision
+
+    for i in range(0, mat_size, block_size):
+        if i + block_size < mat_size:
+            off_diagonal = sparse_mat[i : i + block_size, i + block_size :].todense()
+            # or is tocoo() better?
+            print(f"Writing off diagonal {i}")
+            group.require_dataset(
+                f"row_{i}",
+                data=off_diagonal,
+                compression="gzip",
+                compression_opts=9,
+                shape=off_diagonal.shape,
+                dtype=off_diagonal.dtype,
+                scaleoffset=3,
+            )
+            print("Finished writing")
+
+        reduced = sparse_mat[i : i + block_size, i : i + block_size].todense()
+        print(f"Writing block {i}")
+        group.require_dataset(
+            f"block_{i}",
+            data=reduced,
+            compression="gzip",
+            compression_opts=9,
+            shape=reduced.shape,
+            dtype=reduced.dtype,
+            scaleoffset=3,
+        )
+        print("Finished writing")
+
+
 def get_metadata(dir):
     metadata = pd.read_csv(
         dir + "/META",
@@ -135,6 +209,42 @@ def get_metadata(dir):
         metadata.block_size[0],
         metadata.precision[0],
     )
+
+
+def extract_metadata_df_from_group(group):
+    df = pd.DataFrame(group["positions"], columns=["BP"], index=group["names"])
+    df["relative_pos"] = np.arange(len(df))
+    return df
+
+
+def metadata_to_df(gz_file):
+    df_ld_snps = pd.read_table(gz_file, sep="\s+")
+    df_ld_snps.rename(
+        columns={
+            "rsid": "SNP",
+            "chromosome": "CHR",
+            "position": "BP",
+            "allele1": "A1",
+            "allele2": "A2",
+        },
+        inplace=True,
+        errors="ignore",
+    )
+    assert "SNP" in df_ld_snps.columns
+    assert "CHR" in df_ld_snps.columns
+    assert "BP" in df_ld_snps.columns
+    assert "A1" in df_ld_snps.columns
+    assert "A2" in df_ld_snps.columns
+    df_ld_snps.index = (
+        df_ld_snps["CHR"].astype(str)
+        + "."
+        + df_ld_snps["BP"].astype(str)
+        + "."
+        + df_ld_snps["A1"]
+        + "."
+        + df_ld_snps["A2"]
+    )
+    return df_ld_snps[["BP"]]
 
 
 def load_snips_df(dir):
@@ -187,6 +297,32 @@ def find_overlap(a, b):
     if overlap[1] < overlap[0]:
         return None
     return overlap
+
+
+def get_submatrix_from_chromosome_by_range_h5(
+    chromosome_group, i_start, i_end, j_start, j_end
+):
+    intervals = []
+    for subgroup in chromosome_group.values():
+        intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
+
+    intervals.sort(key=lambda x: x[0])
+
+    submatrices = []
+    for interval in intervals:
+        i_overlap = find_overlap((i_start, i_end), interval)
+        j_overlap = find_overlap((j_start, j_end), interval)
+        if i_overlap or j_overlap:
+            i_overlap = i_overlap or (-1, -1)
+            j_overlap = j_overlap or (-1, -1)
+            submatrices.append(
+                get_submatrix_by_ranges_h5(
+                    chromosome_group[f"snips_{interval[0]}_{interval[1]}"],
+                    *i_overlap,
+                    *j_overlap,
+                )
+            )
+    return combine_matrices(submatrices)
 
 
 def get_submatrix_from_chromosome_by_range(
@@ -304,6 +440,51 @@ def load_symmetric_matrix(dir, index_df):
     return symmetric
 
 
+def load_symmetric_matrix_h5(group, index_df):
+    start_snip = group.attrs["start_snip"]
+    end_snip = group.attrs["end_snip"]
+    block_size = group.attrs["block_size"]
+
+    ind_blocks = index_df.floordiv(block_size) * block_size
+
+    rows = []
+
+    for block in range(0, end_snip - start_snip, block_size):
+        early_inds = index_df[ind_blocks < block]
+        local_inds = index_df[ind_blocks == block]
+        late_inds = index_df[ind_blocks > block]
+
+        if len(local_inds) == 0:
+            continue
+
+        local_ind_offsets = list(local_inds.mod(block_size))
+
+        row = [np.zeros((len(local_inds), len(early_inds)))]
+
+        block_matrix = group[f"block_{block}"]
+        print(f"Reading from block {block}")
+        block_matrix = block_matrix[:, local_ind_offsets][local_ind_offsets]
+        row.append(block_matrix)
+
+        if len(late_inds):
+            aux_matrix = group[f"row_{block}"]
+            print(f"Reading from offset {block}")
+            row.append(
+                aux_matrix[:, (late_inds - (block + block_size)).tolist()][
+                    local_ind_offsets
+                ]
+            )
+
+        rows.append(np.hstack(row))
+
+    if not len(rows):
+        return np.empty((0, 0))
+    triangular = np.vstack(rows)
+    symmetric = triangular + triangular.T
+    np.fill_diagonal(symmetric, DIAGONAL_LD)
+    return symmetric
+
+
 def construct_labeled_df(full_matrix, i_index_df, j_index_df):
     # submatrix = full_matrix[np.ix_(j_index_df, i_index_df)]
     submatrix = full_matrix[: len(j_index_df), : len(i_index_df)]
@@ -321,6 +502,21 @@ def get_submatrix_by_indices(dir, i_list, j_list):
     j_temp = df_ld_snps[df_ld_snps.BP.isin(j_list)].relative_pos
 
     return construct_labeled_df(load_symmetric_matrix(dir, ind_temp), i_temp, j_temp)
+
+
+def get_submatrix_by_ranges_h5(group, i_start, i_end, j_start, j_end):
+    df_ld_snps = extract_metadata_df_from_group(group)
+
+    ind_temp = df_ld_snps[
+        df_ld_snps.BP.between(i_start, i_end) | df_ld_snps.BP.between(j_start, j_end)
+    ].relative_pos
+
+    i_temp = df_ld_snps[df_ld_snps.BP.between(i_start, i_end)].relative_pos
+    j_temp = df_ld_snps[df_ld_snps.BP.between(j_start, j_end)].relative_pos
+
+    return construct_labeled_df(
+        load_symmetric_matrix_h5(group, ind_temp), i_temp, j_temp
+    )
 
 
 def get_submatrix_by_ranges(dir, i_start, i_end, j_start, j_end):
@@ -405,6 +601,33 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
 
 
 @cli.command()
+@click.argument("ld_file")
+@click.argument("chromosome")
+@click.option("--i_start", type=int)
+@click.option("--i_end", type=int)
+@click.option("--j_start", type=int)
+@click.option("--j_end", type=int)
+@click.option("--outfile", "-o", default=None)
+@click.option("--symmetric", "-s", is_flag=True, default=False)
+def submatrix_h5(
+    ld_file, chromosome, i_start, i_end, j_start, j_end, outfile, symmetric
+):
+    if symmetric and (j_start is not None or j_end is not None):
+        raise ValueError("Symmetric flag only compatible with i indexing.")
+    if symmetric:
+        j_start, j_end = i_start, i_end
+    ld = h5py.File(ld_file, "r")
+    res = get_submatrix_from_chromosome_by_range_h5(
+        ld[f"chr{chromosome}"], i_start, i_end, j_start, j_end
+    )
+    if outfile:
+        # name index?
+        res.to_csv(outfile)
+    else:
+        print(res)
+
+
+@cli.command()
 @click.argument("infile")
 @click.argument("outdir")
 @click.option("--block_size", "-b", type=int, default=None)
@@ -412,6 +635,16 @@ def submatrix(chromosome_dir, i_start, i_end, j_start, j_end, outfile, symmetric
 @click.option("--heuristic", "-h", type=str, default=None)
 def convert_file(infile, outdir, block_size, precision, heuristic):
     convert(infile, outdir, block_size, precision, heuristic)
+
+
+@cli.command()
+@click.argument("infile")
+@click.argument("outfile")
+@click.option("--block_size", "-b", type=int, default=None)
+@click.option("--precision", "-p", type=float, default=0)
+@click.option("--heuristic", "-h", type=str, default=None)
+def convert_file_h5(infile, outfile, block_size, precision, heuristic):
+    convert_h5(infile, outfile, block_size, precision, heuristic)
 
 
 @cli.command()

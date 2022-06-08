@@ -175,7 +175,7 @@ def convert_h5(
                 compression_opts=9,
                 shape=off_diagonal.shape,
                 dtype=off_diagonal.dtype,
-                scaleoffset=3,
+                scaleoffset=decimals,
             )
             print("Finished writing")
 
@@ -188,9 +188,54 @@ def convert_h5(
             compression_opts=9,
             shape=reduced.shape,
             dtype=reduced.dtype,
-            scaleoffset=3,
+            scaleoffset=decimals,
         )
         print("Finished writing")
+
+
+def convert_h5_no_block(
+    infile, outfile, block_size=None, precision=0, heuristic=None, decimals=3
+):
+    base_infile = os.path.splitext(infile)[0]
+    filename = base_infile.split("/")[-1]
+    chromosome, start_snip, end_snip = filename.split("_")
+    start_snip, end_snip = int(start_snip), int(end_snip)
+
+    f = h5py.File(outfile, "a")
+
+    group = f.require_group(f"{chromosome}/snips_{start_snip}_{end_snip}")
+
+    sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
+    sparse_mat.setdiag(0)
+    sparse_mat.data = np.round(sparse_mat.data, decimals)
+    sparse_mat = adjust_to_zero(sparse_mat, precision)
+    mat_size = sparse_mat.shape[0]
+
+    pos_df = metadata_to_df(base_infile + ".gz")
+    group.require_dataset(
+        "positions",
+        data=pos_df,
+        compression="gzip",
+        shape=pos_df.shape,
+        dtype=pos_df.dtypes[0],
+    )
+    names = pos_df.index.to_numpy().astype("S")
+    group.create_dataset("names", data=names, compression="gzip")
+
+    group.attrs["start_snip"] = start_snip
+    group.attrs["end_snip"] = end_snip
+    group.attrs["precision"] = precision
+
+    full = sparse_mat.todense()
+    group.require_dataset(
+        "full",
+        data=full,
+        compression="gzip",
+        compression_opts=9,
+        shape=full.shape,
+        dtype=full.dtype,
+        scaleoffset=decimals,
+    )
 
 
 def get_metadata(dir):
@@ -643,8 +688,20 @@ def convert_file(infile, outdir, block_size, precision, heuristic):
 @click.option("--block_size", "-b", type=int, default=None)
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--heuristic", "-h", type=str, default=None)
-def convert_file_h5(infile, outfile, block_size, precision, heuristic):
-    convert_h5(infile, outfile, block_size, precision, heuristic)
+@click.option("--decimals", "-d", type=int, default=3)
+def convert_file_h5(infile, outfile, block_size, precision, heuristic, decimals):
+    convert_h5(infile, outfile, block_size, precision, heuristic, decimals)
+
+
+@cli.command()
+@click.argument("infile")
+@click.argument("outfile")
+@click.option("--block_size", "-b", type=int, default=None)
+@click.option("--precision", "-p", type=float, default=0)
+@click.option("--heuristic", "-h", type=str, default=None)
+@click.option("--decimals", "-d", type=int, default=3)
+def convert_file_h5_simple(infile, outfile, block_size, precision, heuristic, decimals):
+    convert_h5_no_block(infile, outfile, block_size, precision, heuristic, decimals)
 
 
 @cli.command()

@@ -10,6 +10,17 @@ from heapq import merge
 DIAGONAL_LD = 1
 FULL_MATRIX_NAME = "full"
 
+MAF_COLS = [
+    "Alternate_id",
+    "RS_id",
+    "Position",
+    "Allele1",
+    "Allele2",
+    "MAF",
+    "Minor Allele",
+    "Info Score",
+]
+
 
 def unique_merge(v):
     last = None
@@ -174,7 +185,8 @@ def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
 
     intervals = []
     for subgroup in chromosome_group.values():
-        intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
+        if not subgroup.name == "/aux":
+            intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
 
     intervals.sort(key=lambda x: x[0])
 
@@ -253,24 +265,70 @@ def get_submatrix_by_indices_h5(group, i_list, j_list):
     )
 
 
-def get_maf_indices_by_range(maf_file, lower_bound, upper_bound):
-    # inclusive
+# def h5_searchsorted(dataset, value_index, target, how='left'):
+#     lower = 0
+#     upper = len(dataset)
+#     while upper - lower > 1:
+#         print((lower, upper, upper - lower))
+#         middle = (upper + lower) // 2
+#         cur_value = dataset[middle, value_index]
+#         if cur_value == target:
+#             upper = middle
+#             lower = middle
+#         elif cur_value > target:
+#             upper = middle
+#         else:
+#             lower = middle
+#
+#     if how == 'left':
+#         while lower > 0 and dataset[lower - 1, value_index] >= target:
+#             lower -= 1
+#         return lower
+#     else:
+#         while upper < len(dataset) and dataset[upper + 1, value_index] <= target:
+#             upper += 1
+#         return upper
+#
+# def get_maf_indices_special(maf_dataset, lower_bound, upper_bound):
+#     start_index = h5_searchsorted(maf_dataset, 1, lower_bound, 'left')
+#     end_index = h5_searchsorted(maf_dataset, 1, upper_bound, 'right')
+#     return maf_dataset[start_index:end_index, 0]
 
-    maf = pd.read_csv(maf_file, index_col="Position")
-    start_index = maf.MAF.searchsorted(lower_bound)
-    while start_index > 0 and maf.MAF.iloc[start_index - 1] >= lower_bound:
+
+def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
+    # inclusive
+    maf_values = maf_dataset[:, 1]
+    start_index = np.searchsorted(maf_values, lower_bound)
+    while start_index > 0 and maf_values[start_index - 1] >= lower_bound:
         start_index -= 1
 
-    end_index = maf.MAF.searchsorted(upper_bound)
-    while end_index < len(maf) and maf.MAF.iloc[end_index + 1] <= upper_bound:
+    end_index = np.searchsorted(maf_values, upper_bound)
+    while end_index < len(maf_values) and maf_values[end_index + 1] <= upper_bound:
         end_index += 1
 
-    return list(maf.index[start_index:end_index])
+    return maf_dataset[start_index:end_index, 0]
 
 
-def get_submatrix_by_maf_range(chromosome_group, maf_file, lower_bound, upper_bound):
-    indices = get_maf_indices_by_range(maf_file, lower_bound, upper_bound)
+def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
+    indices = get_maf_indices_by_range(
+        chromosome_group["aux"]["MAF"], lower_bound, upper_bound
+    )
     return get_submatrix_from_chromosome_by_list_h5(chromosome_group, indices, indices)
+
+
+def convert_maf_h5(infile, outfile):
+    f = h5py.File(outfile, "a")
+    base_infile = os.path.splitext(infile)[0]
+    filename = base_infile.split("/")[-1]
+    chromosome = filename.split("_")[-2]
+    group = f.require_group("aux")
+
+    maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
+    maf = maf.sort_values("MAF")
+    maf = maf[["Position", "MAF"]].to_numpy()
+    group.require_dataset(
+        "MAF", data=maf, shape=maf.shape, dtype=maf.dtype, compression="gzip"
+    )
 
 
 # maybe make an object
@@ -305,8 +363,8 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
 
 
 @cli.command()
-@click.argument("infile")
-@click.argument("outfile")
+@click.argument("infile", type=click.Path())
+@click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--decimals", "-d", type=int, default=3)
 def convert(infile, outfile, precision, decimals):
@@ -314,15 +372,19 @@ def convert(infile, outfile, precision, decimals):
 
 
 @cli.command()
+@click.argument("infile", type=click.Path())
+@click.argument("outfile", type=click.Path(exists=False))
+def convert_maf(infile, outfile):
+    convert_maf_h5(infile, outfile)
+
+
+@cli.command()
 @click.argument("ld_file")
-@click.argument("maf_file")
 @click.option("--lower_bound", "-l", type=float, default=0)
 @click.option("--upper_bound", "-u", type=float, default=0.5)
 @click.option("--outfile", "-o", default=None)
-def submatrix_by_maf(ld_file, maf_file, lower_bound, upper_bound, outfile):
-    res = get_submatrix_by_maf_range(
-        h5py.File(ld_file, "r"), maf_file, lower_bound, upper_bound
-    )
+def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
+    res = get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
     if outfile:
         # name index?
         res.to_csv(outfile)

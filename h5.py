@@ -6,7 +6,6 @@ import pandas as pd
 import click
 import h5py
 from heapq import merge
-import re
 
 DIAGONAL_LD = 1
 FULL_MATRIX_NAME = "full"
@@ -403,11 +402,13 @@ def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
 @click.option("--decimals", "-d", type=int, default=3)
 @click.option("--start_snip", "-s", type=int, default=1)
 def convert_chromosome(directory, chromosome, outfile, precision, decimals, start_snip):
-
+    print(f"Converting chromosome {chromosome}")
     filtered = []
     for file in os.listdir(directory):
-        if os.path.isfile(os.path.join(directory, file)) and re.match(
-            f"chr{chromosome}_.*\.npz", file
+        if (
+            os.path.isfile(os.path.join(directory, file))
+            and file.startswith(f"chr{chromosome}_")
+            and file.endswith(".npz")
         ):
             filtered.append((file, int(file.split("_")[1])))
 

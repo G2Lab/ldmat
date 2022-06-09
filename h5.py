@@ -6,6 +6,7 @@ import pandas as pd
 import click
 import h5py
 from heapq import merge
+import re
 
 DIAGONAL_LD = 1
 FULL_MATRIX_NAME = "full"
@@ -78,7 +79,9 @@ def convert_h5(infile, outfile, precision=0, decimals=3):
         dtype=pos_df.dtypes[0],
     )
     names = pos_df.index.to_numpy().astype("S")
-    group.create_dataset("names", data=names, compression="gzip")
+    group.require_dataset(
+        "names", data=names, shape=names.shape, dtype=names.dtype, compression="gzip"
+    )
 
     group.attrs["start_snip"] = start_snip
     group.attrs["end_snip"] = end_snip
@@ -390,6 +393,30 @@ def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
         res.to_csv(outfile)
     else:
         print(res)
+
+
+@cli.command()
+@click.argument("directory", type=click.Path())
+@click.argument("chromosome", type=int)
+@click.argument("outfile", type=click.Path(exists=False))
+@click.option("--precision", "-p", type=float, default=0)
+@click.option("--decimals", "-d", type=int, default=3)
+@click.option("--start_snip", "-s", type=int, default=1)
+def convert_chromosome(directory, chromosome, outfile, precision, decimals, start_snip):
+
+    filtered = []
+    for file in os.listdir(directory):
+        if os.path.isfile(os.path.join(directory, file)) and re.match(
+            f"chr{chromosome}_.*\.npz", file
+        ):
+            filtered.append((file, int(file.split("_")[1])))
+
+    filtered.sort(key=lambda x: x[1])
+
+    for (file, snip) in filtered:
+        if snip >= start_snip:
+            print(f"Converting {file}")
+            convert_h5(os.path.join(directory, file), outfile, precision, decimals)
 
 
 if __name__ == "__main__":

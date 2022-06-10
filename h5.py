@@ -54,11 +54,17 @@ def adjust_to_zero(sparse_matrix, precision):
     return sparse_matrix
 
 
-def convert_h5(infile, outfile, precision=0, decimals=3):
+def convert_h5(
+    infile, outfile, precision=0, decimals=3, start_snip=None, end_snip=None
+):
     base_infile = os.path.splitext(infile)[0]
-    filename = base_infile.split("/")[-1]
-    chromosome, start_snip, end_snip = filename.split("_")
-    start_snip, end_snip = int(start_snip), int(end_snip)
+
+    if not start_snip or not end_snip:
+        filename = base_infile.split("/")[-1]
+        chromosome, start_snip, end_snip = filename.split("_")
+        start_snip, end_snip = int(start_snip), int(end_snip)
+
+    print(f"Converting {infile} snips {start_snip} to {end_snip}")
 
     f = h5py.File(outfile, "a")
 
@@ -86,14 +92,20 @@ def convert_h5(infile, outfile, precision=0, decimals=3):
     group.attrs["end_snip"] = end_snip
     group.attrs["precision"] = precision
 
-    full = sparse_mat.todense()
+    pos_df["relative_pos"] = np.arange(len(pos_df))
+    # actually should not filter, since need for rows. instead save start and end snips for columns
+    pos_df = pos_df[pos_df.BP.between(start_snip, end_snip)]
+    lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
+
+    sparse_mat = sparse_mat[:, lower_pos : upper_pos + 1]
+    dense = sparse_mat.todense()
     group.require_dataset(
         "full",
-        data=full,
+        data=dense,
         compression="gzip",
         compression_opts=9,
-        shape=full.shape,
-        dtype=full.dtype,
+        shape=dense.shape,
+        dtype=dense.dtype,
         scaleoffset=decimals,
     )
 
@@ -141,30 +153,75 @@ def find_overlap(a, b):
     return overlap
 
 
-def get_submatrix_from_chromosome_by_range_h5(
-    chromosome_group, i_start, i_end, j_start, j_end
+def get_submatrix_from_chromosome_by_range_symmetric(
+    chromosome_group, range_min, range_max
 ):
+
     intervals = []
     for subgroup in chromosome_group.values():
-        intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
+        if subgroup.name != "/aux":
+            intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
 
     intervals.sort(key=lambda x: x[0])
 
-    submatrices = []
+    slices = []
     for interval in intervals:
-        i_overlap = find_overlap((i_start, i_end), interval)
-        j_overlap = find_overlap((j_start, j_end), interval)
-        if i_overlap or j_overlap:
-            i_overlap = i_overlap or (-1, -1)
-            j_overlap = j_overlap or (-1, -1)
-            submatrices.append(
-                get_submatrix_by_ranges_h5(
-                    chromosome_group[f"snip_{interval[0]}"],
-                    *i_overlap,
-                    *j_overlap,
-                )
+        overlap = find_overlap((range_min, range_max), interval)
+        if overlap:
+            slice = get_vertical_slice(
+                chromosome_group[f"snip_{interval[0]}"], *overlap, range_min, range_max
             )
-    return combine_matrices(submatrices)
+            slices.append(slice)
+
+    triangular = pd.concat(slices, axis=1).fillna(0)
+    symmetric = triangular + triangular.T
+    np.fill_diagonal(symmetric.values, DIAGONAL_LD)
+    return symmetric
+
+
+def add_slice_to_matrix(matrix, slice):
+    if matrix is None:
+        return slice
+    else:
+        return pd.concat((matrix, slice), axis=1).fillna(0)
+
+
+def get_vertical_slice(group, start_col, end_col, start_row, end_row):
+    df_ld_snps = extract_metadata_df_from_group(group)
+
+    col_positions = df_ld_snps[df_ld_snps.BP.between(start_col, end_col)].relative_pos
+    row_positions = df_ld_snps[df_ld_snps.BP.between(start_row, end_row)].relative_pos
+
+    slice = group[FULL_MATRIX_NAME][
+        row_positions[0] : row_positions[-1] + 1,
+        col_positions[0] : col_positions[-1] + 1,
+    ]
+
+    return pd.DataFrame(
+        slice,
+        index=row_positions.index.astype(str),
+        columns=col_positions.index.astype(str),
+    )
+
+
+def get_submatrix_from_chromosome_by_range_h5(
+    chromosome_group, i_start, i_end, j_start, j_end
+):
+    # TODO - implemement efficiently
+
+    symmetric = get_submatrix_from_chromosome_by_range_symmetric(
+        chromosome_group, min(i_start, j_start), max(i_end, j_end)
+    )
+    BP_list = symmetric[[]].copy()
+    BP_list["BP"] = symmetric.index.str.split(".").str[1].astype(int)
+    BP_list["relative_pos"] = np.arange(len(BP_list))
+    row_start, row_end = BP_list[BP_list.BP.between(i_start, i_end)].relative_pos[
+        [0, -1]
+    ]
+    col_start, col_end = BP_list[BP_list.BP.between(j_start, j_end)].relative_pos[
+        [0, -1]
+    ]
+    return symmetric.iloc[row_start : row_end + 1, col_start : col_end + 1]
 
 
 def find_interval_index(val, intervals, start_index):
@@ -179,35 +236,21 @@ def find_interval_index(val, intervals, start_index):
 
 
 def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
+    # TODO - implemement efficiently
+
     if len(i_list) == 0 or len(j_list) == 0:
         return pd.DataFrame()
     i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
 
-    # need to find all intervals and compare
-
-    intervals = []
-    for subgroup in chromosome_group.values():
-        if not subgroup.name == "/aux":
-            intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
-
-    intervals.sort(key=lambda x: x[0])
-
-    submatrices = []
-    prev = 0
-    interval_ind = find_interval_index(ind_list[0], intervals, 0)
-    start_snip, end_snip = intervals[interval_ind]
-
-    for start_snip, end_snip in intervals:
-        # could probably be more efficient since sorted, can also remove from list
-        local_is = [i for i in i_list if start_snip <= i < end_snip]
-        local_js = [j for j in j_list if start_snip <= j < end_snip]
-        submatrices.append(
-            get_submatrix_by_indices_h5(
-                chromosome_group[f"snip_{start_snip}"], local_is, local_js
-            )
-        )
-
-    return combine_matrices(submatrices)
+    symmetric = get_submatrix_from_chromosome_by_range_symmetric(
+        chromosome_group, ind_list[0], ind_list[-1]
+    )
+    BP_list = symmetric[[]].copy()
+    BP_list["BP"] = symmetric.index.str.split(".").str[1].astype(int)
+    BP_list["relative_pos"] = np.arange(len(BP_list))
+    row_inds = BP_list[BP_list.BP.isin(i_list)].relative_pos
+    col_inds = BP_list[BP_list.BP.isin(j_list)].relative_pos
+    return symmetric.iloc[row_inds, col_inds]
 
 
 def load_symmetric_matrix_h5(group, index_df):
@@ -315,6 +358,7 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
     indices = get_maf_indices_by_range(
         chromosome_group["aux"]["MAF"], lower_bound, upper_bound
     )
+    print(f"Found {len(indices)} matching MAFs")
     return get_submatrix_from_chromosome_by_list_h5(chromosome_group, indices, indices)
 
 
@@ -403,6 +447,9 @@ def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
 @click.option("--start_snip", "-s", type=int, default=1)
 def convert_chromosome(directory, chromosome, outfile, precision, decimals, start_snip):
     print(f"Converting chromosome {chromosome}")
+
+    # f = h5py.File(ld_file, "r")
+
     filtered = []
     for file in os.listdir(directory):
         if (
@@ -414,10 +461,24 @@ def convert_chromosome(directory, chromosome, outfile, precision, decimals, star
 
     filtered.sort(key=lambda x: x[1])
 
-    for (file, snip) in filtered:
+    first_missing_snip = start_snip
+
+    for i, (file, snip) in enumerate(filtered):
         if snip >= start_snip:
             print(f"Converting {file}")
-            convert_h5(os.path.join(directory, file), outfile, precision, decimals)
+            if i + 1 < len(filtered):
+                next_covered_snip = filtered[i + 1][1]
+            else:
+                next_covered_snip = np.inf
+            convert_h5(
+                os.path.join(directory, file),
+                outfile,
+                precision,
+                decimals,
+                first_missing_snip,
+                next_covered_snip,
+            )
+            first_missing_snip = next_covered_snip
 
 
 if __name__ == "__main__":

@@ -96,8 +96,7 @@ def convert_h5(
     # actually should not filter, since need for rows. instead save start and end snips for columns
     pos_df = pos_df[pos_df.BP.between(start_snip, end_snip)]
     lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
-
-    sparse_mat = sparse_mat[:, lower_pos : upper_pos + 1]
+    sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
     dense = sparse_mat.todense()
     group.require_dataset(
         "full",
@@ -179,6 +178,113 @@ def get_submatrix_from_chromosome_by_range_symmetric(
     return symmetric
 
 
+def add_right_slice_to_df(df, right_slice):
+    if df.columns[-1] not in right_slice.columns:
+        return pd.concat((df, right_slice), axis=1)
+    infill = right_slice.loc[:, : df.columns[-1]]
+    extension = right_slice.loc[:, df.columns[-1] :].iloc[:, 1:]
+    df.loc[
+        infill.index[0] : infill.index[-1], infill.columns[0] : infill.columns[-1]
+    ] = infill
+    return pd.concat((df, extension), axis=1)
+
+
+def add_bottom_slice_to_df(df, bottom_slice):
+    if df.index[-1] not in bottom_slice.index:
+        return pd.concat((df, bottom_slice), axis=0)
+    infill = bottom_slice.loc[: df.index[-1], :]
+    extension = bottom_slice.loc[df.index[-1] :, :].iloc[1:, :]
+    df.loc[
+        infill.index[0] : infill.index[-1], infill.columns[0] : infill.columns[-1]
+    ] = infill
+    return pd.concat((df, extension), axis=0)
+
+
+def get_submatrix_from_chromosome_by_range_h5(
+    chromosome_group, i_start, i_end, j_start, j_end
+):
+    intervals = []
+    for subgroup in chromosome_group.values():
+        if subgroup.name != "/aux":
+            intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
+
+    intervals.sort(key=lambda x: x[0])
+
+    df = None
+    for interval in intervals:
+        # INTERVALS ARE ONLY FOR J VALUES!!!
+        i_overlap = find_overlap((i_start, i_end), interval)
+        j_overlap = find_overlap((j_start, j_end), interval)
+
+        group = chromosome_group[f"snip_{interval[0]}"]
+        if i_overlap and j_overlap:
+            full_overlap = (
+                min(i_overlap[0], j_overlap[0]),
+                max(i_overlap[1], j_overlap[1]),
+            )
+
+            # right slice - all i in overlap, all j > interval end
+            if j_end > interval[1]:
+                right_slice = get_horizontal_slice(
+                    group, *i_overlap, max(j_start, interval[1]), j_end
+                )
+            else:
+                right_slice = pd.DataFrame()
+
+            # triangular slice - full triangle, make symmetric, then subselect - can probably be done more efficiently
+            main_slice = get_horizontal_slice(group, *full_overlap, *full_overlap)
+            main_slice = main_slice + main_slice.T
+            np.fill_diagonal(main_slice.values, DIAGONAL_LD)
+            main_slice = subselect(main_slice, *i_overlap, *j_overlap)
+
+            # bottom slice - all j in overlap, all i > interval end
+
+            if i_end > interval[1]:
+                bottom_slice = get_horizontal_slice(
+                    group, *j_overlap, max(i_start, interval[1]), i_end
+                ).T
+            else:
+                bottom_slice = pd.DataFrame()
+
+            # get right overlap, bottom overlap, triangle overlap
+
+            # fill in bottom right corner
+            if df is not None:
+                df.iloc[-main_slice.shape[0] :, -main_slice.shape[1] :] = main_slice
+            else:
+                df = main_slice
+
+            df = add_right_slice_to_df(df, right_slice)
+            df = add_bottom_slice_to_df(df, bottom_slice)
+        elif i_overlap:
+            bottom_slice = get_horizontal_slice(
+                group, *i_overlap, j_start, min(j_end, interval[0])
+            )
+            df = pd.concat((df, bottom_slice), axis=1)
+            pass
+        elif j_overlap:
+            # make empty shape
+            right_slice = get_horizontal_slice(
+                group, i_start, min(i_end, interval[0]), *j_overlap
+            )
+            df = pd.concat((df, right_slice), axis=0)
+
+    return df.fillna(0)
+
+
+def subselect(df, i_start, i_end, j_start, j_end):
+    BP_list = df[[]].copy()
+    BP_list["BP"] = df.index.str.split(".").str[1].astype(int)
+    BP_list["relative_pos"] = np.arange(len(BP_list))
+    row_start, row_end = BP_list[BP_list.BP.between(i_start, i_end)].relative_pos[
+        [0, -1]
+    ]
+    col_start, col_end = BP_list[BP_list.BP.between(j_start, j_end)].relative_pos[
+        [0, -1]
+    ]
+    return df.iloc[row_start : row_end + 1, col_start : col_end + 1]
+
+
 def add_slice_to_matrix(matrix, slice):
     if matrix is None:
         return slice
@@ -190,12 +296,17 @@ def get_vertical_slice(group, start_col, end_col, start_row, end_row):
     df_ld_snps = extract_metadata_df_from_group(group)
 
     col_positions = df_ld_snps[df_ld_snps.BP.between(start_col, end_col)].relative_pos
+    # row positions is wrong, should use a universal list
+    breakpoint()
     row_positions = df_ld_snps[df_ld_snps.BP.between(start_row, end_row)].relative_pos
 
-    slice = group[FULL_MATRIX_NAME][
-        row_positions[0] : row_positions[-1] + 1,
-        col_positions[0] : col_positions[-1] + 1,
-    ]
+    if len(col_positions) and len(row_positions):
+        slice = group[FULL_MATRIX_NAME][
+            row_positions[0] : row_positions[-1] + 1,
+            col_positions[0] : col_positions[-1] + 1,
+        ]
+    else:
+        slice = None
 
     return pd.DataFrame(
         slice,
@@ -204,24 +315,25 @@ def get_vertical_slice(group, start_col, end_col, start_row, end_row):
     )
 
 
-def get_submatrix_from_chromosome_by_range_h5(
-    chromosome_group, i_start, i_end, j_start, j_end
-):
-    # TODO - implemement efficiently
+def get_horizontal_slice(group, start_row, end_row, start_col, end_col):
+    df_ld_snps = extract_metadata_df_from_group(group)
 
-    symmetric = get_submatrix_from_chromosome_by_range_symmetric(
-        chromosome_group, min(i_start, j_start), max(i_end, j_end)
+    row_positions = df_ld_snps[df_ld_snps.BP.between(start_row, end_row)].relative_pos
+    col_positions = df_ld_snps[df_ld_snps.BP.between(start_col, end_col)].relative_pos
+
+    if len(row_positions) and len(col_positions):
+        slice = group[FULL_MATRIX_NAME][
+            row_positions[0] : row_positions[-1] + 1,
+            col_positions[0] : col_positions[-1] + 1,
+        ]
+    else:
+        slice = None
+
+    return pd.DataFrame(
+        slice,
+        index=row_positions.index.astype(str),
+        columns=col_positions.index.astype(str),
     )
-    BP_list = symmetric[[]].copy()
-    BP_list["BP"] = symmetric.index.str.split(".").str[1].astype(int)
-    BP_list["relative_pos"] = np.arange(len(BP_list))
-    row_start, row_end = BP_list[BP_list.BP.between(i_start, i_end)].relative_pos[
-        [0, -1]
-    ]
-    col_start, col_end = BP_list[BP_list.BP.between(j_start, j_end)].relative_pos[
-        [0, -1]
-    ]
-    return symmetric.iloc[row_start : row_end + 1, col_start : col_end + 1]
 
 
 def find_interval_index(val, intervals, start_index):

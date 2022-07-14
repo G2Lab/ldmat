@@ -642,6 +642,8 @@ def convert_chromosome(directory, chromosome, outfile, precision, decimals, star
 
     filtered.sort(key=lambda x: x[1])
 
+    start_snip = max(start_snip, filtered[0][1])
+
     first_missing_snip = start_snip
 
     for i, (file, snip) in enumerate(filtered):

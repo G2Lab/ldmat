@@ -181,11 +181,25 @@ def add_main_slice_to_df(df, main_slice):
         # TODO - THIS REQUIRES EXTRA HANDLING, WHICH MUST OCCUR OUTSIDE OF THIS FUNCTION
         # IN THIS CASE, THE BOTTOM RIGHT CORNER OF df HASN'T BEEN FILLED. WE NEED TO GO BACK AND FILL IT IN WITH OLD DATA
         # MAKE SURE BOTH INDEX/COLUMN START/END ARE IN RANGE, OTHERWISE WE NEED FANCY HANDLING (SPLIT AND CONCAT)
+
+        # THIS IS HOPEFULLY HANDLED NOW
         return pd.concat((df, main_slice), axis=0)
-    df.loc[
-        main_slice.index[0] : main_slice.index[-1],
-        main_slice.columns[0] : main_slice.columns[-1],
-    ] = main_slice
+
+    if main_slice.index[-1] in df.index:
+        # everything is normal
+        df.loc[
+            main_slice.index[0] : main_slice.index[-1],
+            main_slice.columns[0] : main_slice.columns[-1],
+        ] = main_slice
+    else:
+        # main slice goes too far?
+        df.loc[main_slice.index[0] :, main_slice.columns[0] :] = main_slice.loc[
+            : df.index[-1], : df.index[-1]
+        ]
+        df = pd.concat(
+            (df, main_slice.loc[df.index[-1] :, df.index[-1] :].iloc[1:, 1:]), axis=0
+        )
+
     return df
 
 

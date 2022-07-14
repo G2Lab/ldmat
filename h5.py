@@ -95,6 +95,11 @@ def convert_h5(
     pos_df["relative_pos"] = np.arange(len(pos_df))
     # actually should not filter, since need for rows. instead save start and end snips for columns
     pos_df = pos_df[pos_df.BP.between(start_snip, end_snip)]
+
+    if len(pos_df) == 0:
+        print(f"No data found between snips {start_snip} and {end_snip}")
+        return None
+
     lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
     sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
     dense = sparse_mat.todense()
@@ -594,8 +599,10 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--decimals", "-d", type=int, default=3)
-def convert(infile, outfile, precision, decimals):
-    convert_h5(infile, outfile, precision, decimals)
+@click.option("--start_snip", "-s", type=int, default=None)
+@click.option("--end_snip", "-e", type=int, default=None)
+def convert(infile, outfile, precision, decimals, start_snip, end_snip):
+    convert_h5(infile, outfile, precision, decimals, start_snip, end_snip)
 
 
 @cli.command()

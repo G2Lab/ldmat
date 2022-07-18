@@ -158,6 +158,10 @@ def find_overlap(a, b):
 
 
 def add_right_slice_to_df(df, right_slice):
+    if right_slice.empty:
+        return df
+    if df is None:
+        return right_slice
     if df.columns[-1] not in right_slice.columns:
         return pd.concat((df, right_slice), axis=1)
     infill = right_slice.loc[:, : df.columns[-1]]
@@ -169,6 +173,10 @@ def add_right_slice_to_df(df, right_slice):
 
 
 def add_bottom_slice_to_df(df, bottom_slice):
+    if bottom_slice.empty:
+        return df
+    if df is None:
+        return bottom_slice
     if df.index[-1] not in bottom_slice.index:
         return pd.concat((df, bottom_slice), axis=0)
     infill = bottom_slice.loc[: df.index[-1], :]
@@ -180,6 +188,8 @@ def add_bottom_slice_to_df(df, bottom_slice):
 
 
 def add_main_slice_to_df(df, main_slice):
+    if main_slice.empty:
+        return df
     if df is None:
         return main_slice
     if main_slice.index[0] not in df.index:
@@ -241,9 +251,10 @@ def get_submatrix_from_chromosome_by_range_h5(
 
             # triangular slice - full triangle, make symmetric, then subselect - can probably be done more efficiently
             main_slice = get_horizontal_slice(group, *full_overlap, *full_overlap)
-            main_slice = main_slice + main_slice.T
-            np.fill_diagonal(main_slice.values, DIAGONAL_LD)
-            main_slice = subselect(main_slice, *i_overlap, *j_overlap)
+            if not main_slice.empty:
+                main_slice = main_slice + main_slice.T
+                np.fill_diagonal(main_slice.values, DIAGONAL_LD)
+                main_slice = subselect(main_slice, *i_overlap, *j_overlap)
 
             # bottom slice - all j in overlap, all i > interval end
 
@@ -280,12 +291,12 @@ def subselect(df, i_start, i_end, j_start, j_end):
     BP_list = df[[]].copy()
     BP_list["BP"] = df.index.str.split(".").str[1].astype(int)
     BP_list["relative_pos"] = np.arange(len(BP_list))
-    row_start, row_end = BP_list[BP_list.BP.between(i_start, i_end)].relative_pos[
-        [0, -1]
-    ]
-    col_start, col_end = BP_list[BP_list.BP.between(j_start, j_end)].relative_pos[
-        [0, -1]
-    ]
+    i_list = BP_list[BP_list.BP.between(i_start, i_end)]
+    j_list = BP_list[BP_list.BP.between(j_start, j_end)]
+    if len(i_list) == 0 or len(j_list) == 0:
+        return pd.DataFrame()
+    row_start, row_end = i_list.relative_pos[[0, -1]]
+    col_start, col_end = j_list.relative_pos[[0, -1]]
     return df.iloc[row_start : row_end + 1, col_start : col_end + 1]
 
 
@@ -420,12 +431,13 @@ def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
 
             df = add_right_slice_to_df(df, right_slice)
             df = add_bottom_slice_to_df(df, bottom_slice)
+
         elif i_overlap:
             bottom_slice = get_horizontal_slice_by_list(
                 group, i_overlap, list_overlap(j_list, (0, interval[0]))
             )
             df = pd.concat((df, bottom_slice), axis=1)
-            pass
+
         elif j_overlap:
             right_slice = get_horizontal_slice_by_list(
                 group, list_overlap(i_list, (0, interval[0])), j_overlap

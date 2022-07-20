@@ -207,21 +207,18 @@ def get_submatrix_from_chromosome_by_range_h5(
 
     df = None
     for interval in intervals:
-        # INTERVALS ARE ONLY FOR J VALUES!!!
-        # TODO - shouldn't this be asymmetrical? J and I are different, should use different intervals
-        # TODO - save things with i_start, i_end, j_start, j_end
-        # TODO - select overlaps based on these new intervals
+        # INTERVALS ARE ONLY FOR i VALUES!!!
         i_overlap = find_overlap((i_start, i_end), interval)
         j_overlap = find_overlap((j_start, j_end), interval)
 
         group = chromosome_group[f"snip_{interval[0]}"]
+
+        # get right overlap, bottom overlap, triangle overlap
         if i_overlap and j_overlap:
             full_overlap = (
                 min(i_overlap[0], j_overlap[0]),
                 max(i_overlap[1], j_overlap[1]),
             )
-
-            # get right overlap, bottom overlap, triangle overlap
 
             # triangular slice - full triangle, make symmetric, then subselect - can probably be done more efficiently
             main_slice = get_horizontal_slice(group, *full_overlap, *full_overlap)
@@ -233,24 +230,17 @@ def get_submatrix_from_chromosome_by_range_h5(
                 df = add_main_slice_to_df(df, main_slice)
 
             # right slice - all i in overlap, all j > interval end
-            if j_end > interval[1]:
-                right_slice = get_horizontal_slice(
-                    group, *i_overlap, max(j_start, interval[1]), j_end
-                )
-                df = add_slice_to_df(df, right_slice, 1)
-
-            # bottom slice - all j in overlap, all i > interval end
-            if i_end > interval[1]:
-                bottom_slice = get_horizontal_slice(
-                    group, *j_overlap, max(i_start, interval[1]), i_end
-                ).T
-                df = add_slice_to_df(df, bottom_slice, 0)
-
-        elif i_overlap:
-            right_slice = get_horizontal_slice(group, *i_overlap, j_start, j_end)
+        if i_overlap and j_end > interval[1]:
+            right_slice = get_horizontal_slice(
+                group, *i_overlap, max(j_start, interval[1]), j_end
+            )
             df = add_slice_to_df(df, right_slice, 1)
-        elif j_overlap:
-            bottom_slice = get_horizontal_slice(group, *j_overlap, i_start, i_end).T
+
+        # bottom slice - all j in overlap, all i > interval end
+        if j_overlap and i_end > interval[1]:
+            bottom_slice = get_horizontal_slice(
+                group, *j_overlap, max(i_start, interval[1]), i_end
+            ).T
             df = add_slice_to_df(df, bottom_slice, 0)
 
     return df.fillna(0)

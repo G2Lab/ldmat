@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.sparse as sparse
-import scipy.linalg as linalg
 import os
 import pandas as pd
 import click
@@ -31,8 +30,7 @@ def unique_merge(v):
 
 
 def sort_and_combine_lists(a, b):
-    sorted_a, sorted_b = sorted(set(a)), sorted(set(b))
-    return sorted_a, sorted_b, list(unique_merge((sorted_a, sorted_b)))
+    return sorted(set(a)), sorted(set(b))
 
 
 def adjust_to_zero(sparse_matrix, precision):
@@ -195,58 +193,28 @@ def add_main_slice_to_df(df, main_slice):
     return df
 
 
+def validate_range(a, b):
+    return a, b
+
+
 def get_submatrix_from_chromosome_by_range_h5(
     chromosome_group, i_start, i_end, j_start, j_end
 ):
-    intervals = []
-    for subgroup in chromosome_group.values():
-        if subgroup.name != "/aux":
-            intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
-
-    intervals.sort(key=lambda x: x[0])
-
-    df = None
-    for interval in intervals:
-        # INTERVALS ARE ONLY FOR i VALUES!!!
-        i_overlap = find_overlap((i_start, i_end), interval)
-        j_overlap = find_overlap((j_start, j_end), interval)
-
-        group = chromosome_group[f"snip_{interval[0]}"]
-
-        # get right overlap, bottom overlap, triangle overlap
-        if i_overlap and j_overlap:
-            full_overlap = (
-                min(i_overlap[0], j_overlap[0]),
-                max(i_overlap[1], j_overlap[1]),
-            )
-
-            # triangular slice - full triangle, make symmetric, then subselect - can probably be done more efficiently
-            main_slice = get_horizontal_slice(group, *full_overlap, *full_overlap)
-            if not main_slice.empty:
-                main_slice = main_slice + main_slice.T
-                np.fill_diagonal(main_slice.values, DIAGONAL_LD)
-                main_slice = subselect(main_slice, *i_overlap, *j_overlap)
-
-                df = add_main_slice_to_df(df, main_slice)
-
-            # right slice - all i in overlap, all j > interval end
-        if i_overlap and j_end > interval[1]:
-            right_slice = get_horizontal_slice(
-                group, *i_overlap, max(j_start, interval[1]), j_end
-            )
-            df = add_slice_to_df(df, right_slice, 1)
-
-        # bottom slice - all j in overlap, all i > interval end
-        if j_overlap and i_end > interval[1]:
-            bottom_slice = get_horizontal_slice(
-                group, *j_overlap, max(i_start, interval[1]), i_end
-            ).T
-            df = add_slice_to_df(df, bottom_slice, 0)
-
-    return df.fillna(0)
+    return get_submatrix_from_chromosome_h5(
+        chromosome_group,
+        (i_start, i_end),
+        (j_start, j_end),
+        validate_func=validate_range,
+        overlap_func=find_overlap,
+        subselect_func=subselect,
+        slice_func=get_horizontal_slice,
+        full_overlap_func=outer_overlap,
+    )
 
 
-def subselect(df, i_start, i_end, j_start, j_end):
+def subselect(df, rows, columns):
+    i_start, i_end = rows
+    j_start, j_end = columns
     BP_list = df[[]].copy()
     BP_list["BP"] = df.index.str.split(".").str[1].astype(int)
     BP_list["relative_pos"] = np.arange(len(BP_list))
@@ -268,14 +236,9 @@ def subselect_list(df, i_list, j_list):
     return df.iloc[row_inds, col_inds]
 
 
-def add_slice_to_matrix(matrix, slice):
-    if matrix is None:
-        return slice
-    else:
-        return pd.concat((matrix, slice), axis=1).fillna(0)
-
-
-def get_horizontal_slice(group, start_row, end_row, start_col, end_col):
+def get_horizontal_slice(group, rows, columns):
+    start_row, end_row = rows
+    start_col, end_col = columns
     df_ld_snps = extract_metadata_df_from_group(group)
 
     row_positions = df_ld_snps[df_ld_snps.BP.between(start_row, end_row)].relative_pos
@@ -318,10 +281,33 @@ def list_overlap(index_list, interval):
     return [index for index in index_list if interval[0] <= index < interval[1]]
 
 
-def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
-    if len(i_list) == 0 or len(j_list) == 0:
+def outer_overlap(i_overlap, j_overlap):
+    return min(i_overlap[0], j_overlap[0]), max(i_overlap[1], j_overlap[1])
+
+
+def outer_overlap_list(i_overlap, j_overlap):
+    return list(unique_merge((i_overlap, j_overlap)))
+
+
+def get_submatrix_from_chromosome_h5(
+    chromosome_group,
+    i_values,
+    j_values,
+    validate_func,
+    overlap_func,
+    subselect_func,
+    slice_func,
+    full_overlap_func,
+):
+    if (
+        len(i_values) == 0
+        or len(j_values) == 0
+        or i_values[-1] < i_values[0]
+        or j_values[-1] < j_values[0]
+    ):
         return pd.DataFrame()
-    i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
+
+    i_values, j_values = validate_func(i_values, j_values)
 
     intervals = []
     for subgroup in chromosome_group.values():
@@ -332,56 +318,54 @@ def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
 
     df = None
     for interval in intervals:
-        # INTERVALS ARE ONLY FOR J VALUES!!!
-        i_overlap = list_overlap(i_list, interval)
-        j_overlap = list_overlap(j_list, interval)
+        # INTERVALS ARE ONLY FOR i VALUES!!!
+
+        i_overlap = overlap_func(i_values, interval)
+        j_overlap = overlap_func(j_values, interval)
 
         group = chromosome_group[f"snip_{interval[0]}"]
-        if i_overlap and j_overlap:
-            full_overlap = list_overlap(ind_list, interval)
 
-            # right slice - all i in overlap, all j > interval end
-            if j_list[-1] > interval[1]:
-                right_slice = get_horizontal_slice_by_list(
-                    group, i_overlap, list_overlap(j_list, (interval[1], np.inf))
-                )
-            else:
-                right_slice = pd.DataFrame()
+        # get right overlap, bottom overlap, triangle overlap
+        if i_overlap and j_overlap:
+            full_overlap = full_overlap_func(i_overlap, j_overlap)
 
             # triangular slice - full triangle, make symmetric, then subselect - can probably be done more efficiently
-            main_slice = get_horizontal_slice_by_list(group, full_overlap, full_overlap)
-            main_slice = main_slice + main_slice.T
-            np.fill_diagonal(main_slice.values, DIAGONAL_LD)
-            main_slice = subselect_list(main_slice, i_overlap, j_overlap)
+            main_slice = slice_func(group, full_overlap, full_overlap)
+            if not main_slice.empty:
+                main_slice = main_slice + main_slice.T
+                np.fill_diagonal(main_slice.values, DIAGONAL_LD)
+                main_slice = subselect_func(main_slice, i_overlap, j_overlap)
 
-            # bottom slice - all j in overlap, all i > interval end
+                df = add_main_slice_to_df(df, main_slice)
 
-            if i_list[-1] > interval[1]:
-                bottom_slice = get_horizontal_slice_by_list(
-                    group, j_overlap, list_overlap(i_list, (interval[1], np.inf))
-                ).T
-            else:
-                bottom_slice = pd.DataFrame()
-
-            # get right overlap, bottom overlap, triangle overlap
-            df = add_main_slice_to_df(df, main_slice)
-
+            # right slice - all i in overlap, all j > interval end
+        if i_overlap and j_values[-1] > interval[1]:
+            right_slice = slice_func(
+                group, i_overlap, overlap_func(j_values, (interval[1], np.inf))
+            )
             df = add_slice_to_df(df, right_slice, 1)
+
+        # bottom slice - all j in overlap, all i > interval end
+        if j_overlap and i_values[-1] > interval[1]:
+            bottom_slice = slice_func(
+                group, j_overlap, overlap_func(i_values, (interval[1], np.inf))
+            ).T
             df = add_slice_to_df(df, bottom_slice, 0)
 
-        elif i_overlap:
-            bottom_slice = get_horizontal_slice_by_list(
-                group, i_overlap, list_overlap(j_list, (0, interval[0]))
-            )
-            df = pd.concat((df, bottom_slice), axis=1)
-
-        elif j_overlap:
-            right_slice = get_horizontal_slice_by_list(
-                group, list_overlap(i_list, (0, interval[0])), j_overlap
-            )
-            df = pd.concat((df, right_slice), axis=0)
-
     return df.fillna(0)
+
+
+def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
+    return get_submatrix_from_chromosome_h5(
+        chromosome_group,
+        i_list,
+        j_list,
+        validate_func=sort_and_combine_lists,
+        overlap_func=list_overlap,
+        subselect_func=subselect_list,
+        slice_func=get_horizontal_slice_by_list,
+        full_overlap_func=outer_overlap_list,
+    )
 
 
 def load_symmetric_matrix_h5(group, index_df):

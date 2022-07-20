@@ -223,7 +223,7 @@ def get_horizontal_slice(group, rows, columns, range_query):
         col_inds = df_ld_snps.BP.between(*columns)
     else:
         row_inds = df_ld_snps.BP.isin(rows)
-        col_inds = df_ld_snps.BP.isin(rows)
+        col_inds = df_ld_snps.BP.isin(columns)
 
     row_positions = df_ld_snps[row_inds].relative_pos
     col_positions = df_ld_snps[col_inds].relative_pos
@@ -254,7 +254,7 @@ def overlap(values, interval, range_query):
 
 def outer_overlap(i_overlap, j_overlap, range_query):
     merged = list(unique_merge((i_overlap, j_overlap)))
-    return merged[0], merged[-1] if range_query else merged
+    return (merged[0], merged[-1]) if range_query else merged
 
 
 def unique_merge(v):  # https://stackoverflow.com/a/59361748

@@ -182,17 +182,6 @@ def add_main_slice_to_df(df, main_slice):
     return df
 
 
-def get_submatrix_from_chromosome_by_range_h5(
-    chromosome_group, i_start, i_end, j_start, j_end
-):
-    return get_submatrix_from_chromosome(
-        chromosome_group,
-        (i_start, i_end),
-        (j_start, j_end),
-        True,
-    )
-
-
 def subselect(df, rows, columns, range_query):
     BP_list = df[[]].copy()
     BP_list["BP"] = df.index.str.split(".").str[1].astype(int)
@@ -325,29 +314,6 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
     return df.fillna(0)
 
 
-def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
-    return get_submatrix_from_chromosome(chromosome_group, i_list, j_list, False)
-
-
-def load_symmetric_matrix_h5(group, index_df):
-    if not len(index_df):
-        return np.empty((0, 0))
-    range_start = index_df[0]
-    range_end = index_df[-1] + 1
-
-    submatrix = group[FULL_MATRIX_NAME][range_start:range_end, range_start:range_end]
-    if range_end - range_start == len(index_df):
-        # we have a range
-        triangular = submatrix
-    else:
-        ind_offsets = index_df - range_start
-        triangular = submatrix[np.ix_(ind_offsets, ind_offsets)]
-
-    symmetric = triangular + triangular.T
-    np.fill_diagonal(symmetric, DIAGONAL_LD)
-    return symmetric
-
-
 def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
     # inclusive
     maf_values = maf_dataset[:, 1]
@@ -367,8 +333,8 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
         chromosome_group["aux"]["MAF"], lower_bound, upper_bound
     )
     print(f"Found {len(indices)} matching MAFs")
-    maf_result = get_submatrix_from_chromosome_by_list_h5(
-        chromosome_group, indices, indices
+    maf_result = get_submatrix_from_chromosome(
+        chromosome_group, indices, indices, range_query=False
     )
     assert all(np.diagonal(maf_result) == 1)
     return maf_result
@@ -376,9 +342,6 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
 
 def convert_maf_h5(infile, outfile):
     f = h5py.File(outfile, "a")
-    base_infile = os.path.splitext(infile)[0]
-    filename = base_infile.split("/")[-1]
-    chromosome = filename.split("_")[-2]
     group = f.require_group("aux")
 
     maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
@@ -410,8 +373,8 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
         raise ValueError("Symmetric flag only compatible with i indexing.")
     if symmetric:
         j_start, j_end = i_start, i_end
-    res = get_submatrix_from_chromosome_by_range_h5(
-        h5py.File(ld_file, "r"), i_start, i_end, j_start, j_end
+    res = get_submatrix_from_chromosome(
+        h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
     )
     if outfile:
         # name index?

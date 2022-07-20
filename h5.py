@@ -29,10 +29,6 @@ def unique_merge(v):
             yield a
 
 
-def sort_and_combine_lists(a, b):
-    return sorted(set(a)), sorted(set(b))
-
-
 def adjust_to_zero(sparse_matrix, precision):
     if precision:
         nonzeros = sparse_matrix.nonzero()
@@ -141,13 +137,6 @@ def metadata_to_df(gz_file):
     return df_ld_snps[["BP"]]
 
 
-def find_overlap(a, b):
-    overlap = max(a[0], b[0]), min(a[1], b[1])
-    if overlap[1] < overlap[0]:
-        return None
-    return overlap
-
-
 def add_slice_to_df(df, slice, axis):
     if slice.empty:
         return df
@@ -193,62 +182,60 @@ def add_main_slice_to_df(df, main_slice):
     return df
 
 
-def validate_range(a, b):
-    return a, b
-
-
 def get_submatrix_from_chromosome_by_range_h5(
     chromosome_group, i_start, i_end, j_start, j_end
 ):
-    return get_submatrix_from_chromosome_h5(
+    return get_submatrix_from_chromosome(
         chromosome_group,
         (i_start, i_end),
         (j_start, j_end),
-        validate_func=validate_range,
-        overlap_func=find_overlap,
-        subselect_func=subselect,
-        slice_func=get_horizontal_slice,
-        full_overlap_func=outer_overlap,
+        True,
     )
 
 
-def subselect(df, rows, columns):
-    i_start, i_end = rows
-    j_start, j_end = columns
+def subselect(df, rows, columns, range_query):
     BP_list = df[[]].copy()
     BP_list["BP"] = df.index.str.split(".").str[1].astype(int)
     BP_list["relative_pos"] = np.arange(len(BP_list))
-    i_list = BP_list[BP_list.BP.between(i_start, i_end)]
-    j_list = BP_list[BP_list.BP.between(j_start, j_end)]
-    if len(i_list) == 0 or len(j_list) == 0:
+
+    if range_query:
+        r = BP_list[BP_list.BP.between(*rows)]
+        c = BP_list[BP_list.BP.between(*columns)]
+    else:
+        r = BP_list[BP_list.BP.isin(rows)]
+        c = BP_list[BP_list.BP.isin(columns)]
+
+    if len(r) == 0 or len(c) == 0:
         return pd.DataFrame()
-    row_start, row_end = i_list.relative_pos[[0, -1]]
-    col_start, col_end = j_list.relative_pos[[0, -1]]
-    return df.iloc[row_start : row_end + 1, col_start : col_end + 1]
+
+    row_inds, col_inds = r.relative_pos, c.relative_pos
+
+    if range_query:
+        return df.iloc[row_inds[0] : row_inds[-1] + 1, col_inds[0] : col_inds[-1] + 1]
+    else:
+        return df.iloc[row_inds, col_inds]
 
 
-def subselect_list(df, i_list, j_list):
-    BP_list = df[[]].copy()
-    BP_list["BP"] = df.index.str.split(".").str[1].astype(int)
-    BP_list["relative_pos"] = np.arange(len(BP_list))
-    row_inds = BP_list[BP_list.BP.isin(i_list)].relative_pos
-    col_inds = BP_list[BP_list.BP.isin(j_list)].relative_pos
-    return df.iloc[row_inds, col_inds]
-
-
-def get_horizontal_slice(group, rows, columns):
-    start_row, end_row = rows
-    start_col, end_col = columns
+def get_horizontal_slice(group, rows, columns, range_query):
     df_ld_snps = extract_metadata_df_from_group(group)
+    if range_query:
+        r = df_ld_snps.BP.between(*rows)
+        c = df_ld_snps.BP.between(*columns)
+    else:
+        r = df_ld_snps.BP.isin(rows)
+        c = df_ld_snps.BP.isin(rows)
 
-    row_positions = df_ld_snps[df_ld_snps.BP.between(start_row, end_row)].relative_pos
-    col_positions = df_ld_snps[df_ld_snps.BP.between(start_col, end_col)].relative_pos
+    row_positions = df_ld_snps[r].relative_pos
+    col_positions = df_ld_snps[c].relative_pos
 
     if len(row_positions) and len(col_positions):
-        slice = group[FULL_MATRIX_NAME][
-            row_positions[0] : row_positions[-1] + 1,
-            col_positions[0] : col_positions[-1] + 1,
-        ]
+        if range_query:
+            slice = group[FULL_MATRIX_NAME][
+                row_positions[0] : row_positions[-1] + 1,
+                col_positions[0] : col_positions[-1] + 1,
+            ]
+        else:
+            slice = group[FULL_MATRIX_NAME][row_positions.tolist()][:, col_positions]
     else:
         slice = None
 
@@ -259,46 +246,21 @@ def get_horizontal_slice(group, rows, columns):
     )
 
 
-def get_horizontal_slice_by_list(group, row_list, col_list):
-    df_ld_snps = extract_metadata_df_from_group(group)
-
-    row_positions = df_ld_snps[df_ld_snps.BP.isin(row_list)].relative_pos
-    col_positions = df_ld_snps[df_ld_snps.BP.isin(col_list)].relative_pos
-
-    if len(row_positions) and len(col_positions):
-        slice = group[FULL_MATRIX_NAME][row_positions.tolist()][:, col_positions]
-    else:
-        slice = None
-
-    return pd.DataFrame(
-        slice,
-        index=row_positions.index.astype(str),
-        columns=col_positions.index.astype(str),
-    )
+def overlap(a, b, range_query):
+    if not range_query:
+        return [index for index in a if b[0] <= index < b[1]]
+    overlap = max(a[0], b[0]), min(a[1], b[1])
+    if overlap[1] < overlap[0]:
+        return None
+    return overlap
 
 
-def list_overlap(index_list, interval):
-    return [index for index in index_list if interval[0] <= index < interval[1]]
+def outer_overlap(i_overlap, j_overlap, range_query):
+    merged = list(unique_merge((i_overlap, j_overlap)))
+    return merged if range_query else merged[0], merged[-1]
 
 
-def outer_overlap(i_overlap, j_overlap):
-    return min(i_overlap[0], j_overlap[0]), max(i_overlap[1], j_overlap[1])
-
-
-def outer_overlap_list(i_overlap, j_overlap):
-    return list(unique_merge((i_overlap, j_overlap)))
-
-
-def get_submatrix_from_chromosome_h5(
-    chromosome_group,
-    i_values,
-    j_values,
-    validate_func,
-    overlap_func,
-    subselect_func,
-    slice_func,
-    full_overlap_func,
-):
+def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_query):
     if (
         len(i_values) == 0
         or len(j_values) == 0
@@ -307,7 +269,7 @@ def get_submatrix_from_chromosome_h5(
     ):
         return pd.DataFrame()
 
-    i_values, j_values = validate_func(i_values, j_values)
+    i_values, j_values = sorted(set(i_values)), sorted(set(j_values))
 
     intervals = []
     for subgroup in chromosome_group.values():
@@ -320,35 +282,43 @@ def get_submatrix_from_chromosome_h5(
     for interval in intervals:
         # INTERVALS ARE ONLY FOR i VALUES!!!
 
-        i_overlap = overlap_func(i_values, interval)
-        j_overlap = overlap_func(j_values, interval)
+        i_overlap = overlap(i_values, interval, range_query)
+        j_overlap = overlap(j_values, interval, range_query)
 
         group = chromosome_group[f"snip_{interval[0]}"]
 
         # get right overlap, bottom overlap, triangle overlap
         if i_overlap and j_overlap:
-            full_overlap = full_overlap_func(i_overlap, j_overlap)
+            full_overlap = outer_overlap(i_overlap, j_overlap, range_query)
 
             # triangular slice - full triangle, make symmetric, then subselect - can probably be done more efficiently
-            main_slice = slice_func(group, full_overlap, full_overlap)
+            main_slice = get_horizontal_slice(
+                group, full_overlap, full_overlap, range_query
+            )
             if not main_slice.empty:
                 main_slice = main_slice + main_slice.T
                 np.fill_diagonal(main_slice.values, DIAGONAL_LD)
-                main_slice = subselect_func(main_slice, i_overlap, j_overlap)
+                main_slice = subselect(main_slice, i_overlap, j_overlap, range_query)
 
                 df = add_main_slice_to_df(df, main_slice)
 
             # right slice - all i in overlap, all j > interval end
         if i_overlap and j_values[-1] > interval[1]:
-            right_slice = slice_func(
-                group, i_overlap, overlap_func(j_values, (interval[1], np.inf))
+            right_slice = get_horizontal_slice(
+                group,
+                i_overlap,
+                overlap(j_values, (interval[1], np.inf), range_query),
+                range_query,
             )
             df = add_slice_to_df(df, right_slice, 1)
 
         # bottom slice - all j in overlap, all i > interval end
         if j_overlap and i_values[-1] > interval[1]:
-            bottom_slice = slice_func(
-                group, j_overlap, overlap_func(i_values, (interval[1], np.inf))
+            bottom_slice = get_horizontal_slice(
+                group,
+                j_overlap,
+                overlap(i_values, (interval[1], np.inf), range_query),
+                range_query,
             ).T
             df = add_slice_to_df(df, bottom_slice, 0)
 
@@ -356,16 +326,7 @@ def get_submatrix_from_chromosome_h5(
 
 
 def get_submatrix_from_chromosome_by_list_h5(chromosome_group, i_list, j_list):
-    return get_submatrix_from_chromosome_h5(
-        chromosome_group,
-        i_list,
-        j_list,
-        validate_func=sort_and_combine_lists,
-        overlap_func=list_overlap,
-        subselect_func=subselect_list,
-        slice_func=get_horizontal_slice_by_list,
-        full_overlap_func=outer_overlap_list,
-    )
+    return get_submatrix_from_chromosome(chromosome_group, i_list, j_list, False)
 
 
 def load_symmetric_matrix_h5(group, index_df):
@@ -385,44 +346,6 @@ def load_symmetric_matrix_h5(group, index_df):
     symmetric = triangular + triangular.T
     np.fill_diagonal(symmetric, DIAGONAL_LD)
     return symmetric
-
-
-def construct_labeled_df(
-    full_matrix, df_ld_snps, i_index_df, j_index_df, combined_index_df
-):
-    ld_snps_ind = df_ld_snps.iloc[combined_index_df].index
-
-    # should reduce size before creating DF
-    df = pd.DataFrame(full_matrix, index=ld_snps_ind, columns=ld_snps_ind)
-    return df.loc[df_ld_snps.iloc[j_index_df].index, df_ld_snps.iloc[i_index_df].index]
-
-
-def get_submatrix_by_ranges_h5(group, i_start, i_end, j_start, j_end):
-    df_ld_snps = extract_metadata_df_from_group(group)
-
-    ind_temp = df_ld_snps[
-        df_ld_snps.BP.between(i_start, i_end) | df_ld_snps.BP.between(j_start, j_end)
-    ].relative_pos
-
-    i_temp = df_ld_snps[df_ld_snps.BP.between(i_start, i_end)].relative_pos
-    j_temp = df_ld_snps[df_ld_snps.BP.between(j_start, j_end)].relative_pos
-
-    return construct_labeled_df(
-        load_symmetric_matrix_h5(group, ind_temp), df_ld_snps, i_temp, j_temp, ind_temp
-    )
-
-
-def get_submatrix_by_indices_h5(group, i_list, j_list):
-    i_list, j_list, ind_list = sort_and_combine_lists(i_list, j_list)
-    df_ld_snps = extract_metadata_df_from_group(group)
-
-    ind_temp = df_ld_snps[df_ld_snps.BP.isin(ind_list)].relative_pos
-
-    i_temp = df_ld_snps[df_ld_snps.BP.isin(i_list)].relative_pos
-    j_temp = df_ld_snps[df_ld_snps.BP.isin(j_list)].relative_pos
-    return construct_labeled_df(
-        load_symmetric_matrix_h5(group, ind_temp), df_ld_snps, i_temp, j_temp, ind_temp
-    )
 
 
 def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):

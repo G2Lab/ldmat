@@ -20,13 +20,9 @@ MAF_COLS = [
     "Info Score",
 ]
 
-
-def unique_merge(v):
-    last = None
-    for a in merge(*v):
-        if a != last:
-            last = a
-            yield a
+# -----------------------------------------------------------
+# CONVERSION FUNCTIONS
+# -----------------------------------------------------------
 
 
 def adjust_to_zero(sparse_matrix, precision):
@@ -101,17 +97,10 @@ def convert_h5(
     )
 
 
-def extract_metadata_df_from_group(group):
-    df = pd.DataFrame(group["positions"], columns=["BP"], index=group["names"])
-    df["relative_pos"] = np.arange(len(df))
-    return df
-
-
 def metadata_to_df(gz_file):
     df_ld_snps = pd.read_table(gz_file, sep="\s+")
     df_ld_snps.rename(
         columns={
-            "rsid": "SNP",
             "chromosome": "CHR",
             "position": "BP",
             "allele1": "A1",
@@ -120,7 +109,6 @@ def metadata_to_df(gz_file):
         inplace=True,
         errors="ignore",
     )
-    assert "SNP" in df_ld_snps.columns
     assert "CHR" in df_ld_snps.columns
     assert "BP" in df_ld_snps.columns
     assert "A1" in df_ld_snps.columns
@@ -135,6 +123,23 @@ def metadata_to_df(gz_file):
         + df_ld_snps["A2"]
     )
     return df_ld_snps[["BP"]]
+
+
+def convert_maf_h5(infile, outfile):
+    f = h5py.File(outfile, "a")
+    group = f.require_group("aux")
+
+    maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
+    maf = maf.sort_values("MAF")
+    maf = maf[["Position", "MAF"]].to_numpy()
+    group.require_dataset(
+        "MAF", data=maf, shape=maf.shape, dtype=maf.dtype, compression="gzip"
+    )
+
+
+# -----------------------------------------------------------
+# SELECTION FUNCTIONS
+# -----------------------------------------------------------
 
 
 def add_slice_to_df(df, slice, axis):
@@ -188,16 +193,16 @@ def subselect(df, rows, columns, range_query):
     BP_list["relative_pos"] = np.arange(len(BP_list))
 
     if range_query:
-        r = BP_list[BP_list.BP.between(*rows)]
-        c = BP_list[BP_list.BP.between(*columns)]
+        bp_rows = BP_list[BP_list.BP.between(*rows)]
+        bp_cols = BP_list[BP_list.BP.between(*columns)]
     else:
-        r = BP_list[BP_list.BP.isin(rows)]
-        c = BP_list[BP_list.BP.isin(columns)]
+        bp_rows = BP_list[BP_list.BP.isin(rows)]
+        bp_cols = BP_list[BP_list.BP.isin(columns)]
 
-    if len(r) == 0 or len(c) == 0:
+    if len(bp_rows) == 0 or len(bp_cols) == 0:
         return pd.DataFrame()
 
-    row_inds, col_inds = r.relative_pos, c.relative_pos
+    row_inds, col_inds = bp_rows.relative_pos, bp_cols.relative_pos
 
     if range_query:
         return df.iloc[row_inds[0] : row_inds[-1] + 1, col_inds[0] : col_inds[-1] + 1]
@@ -205,51 +210,64 @@ def subselect(df, rows, columns, range_query):
         return df.iloc[row_inds, col_inds]
 
 
+def extract_metadata_df_from_group(group):
+    df = pd.DataFrame(group["positions"], columns=["BP"], index=group["names"])
+    df["relative_pos"] = np.arange(len(df))
+    return df
+
+
 def get_horizontal_slice(group, rows, columns, range_query):
     df_ld_snps = extract_metadata_df_from_group(group)
     if range_query:
-        r = df_ld_snps.BP.between(*rows)
-        c = df_ld_snps.BP.between(*columns)
+        row_inds = df_ld_snps.BP.between(*rows)
+        col_inds = df_ld_snps.BP.between(*columns)
     else:
-        r = df_ld_snps.BP.isin(rows)
-        c = df_ld_snps.BP.isin(rows)
+        row_inds = df_ld_snps.BP.isin(rows)
+        col_inds = df_ld_snps.BP.isin(rows)
 
-    row_positions = df_ld_snps[r].relative_pos
-    col_positions = df_ld_snps[c].relative_pos
+    row_positions = df_ld_snps[row_inds].relative_pos
+    col_positions = df_ld_snps[col_inds].relative_pos
 
+    h_slice = None
     if len(row_positions) and len(col_positions):
         if range_query:
-            slice = group[FULL_MATRIX_NAME][
+            h_slice = group[FULL_MATRIX_NAME][
                 row_positions[0] : row_positions[-1] + 1,
                 col_positions[0] : col_positions[-1] + 1,
             ]
         else:
-            slice = group[FULL_MATRIX_NAME][row_positions.tolist()][:, col_positions]
-    else:
-        slice = None
+            h_slice = group[FULL_MATRIX_NAME][row_positions.tolist()][:, col_positions]
 
     return pd.DataFrame(
-        slice,
+        h_slice,
         index=row_positions.index.astype(str),
         columns=col_positions.index.astype(str),
     )
 
 
-def overlap(a, b, range_query):
-    if not range_query:
-        return [index for index in a if b[0] <= index < b[1]]
-    overlap = max(a[0], b[0]), min(a[1], b[1])
-    if overlap[1] < overlap[0]:
-        return None
-    return overlap
+def overlap(values, interval, range_query):
+    if range_query:
+        overlap = max(values[0], interval[0]), min(values[1], interval[1])
+        return overlap if overlap[0] <= overlap[1] else []
+    return [index for index in values if interval[0] <= index < interval[1]]
 
 
 def outer_overlap(i_overlap, j_overlap, range_query):
     merged = list(unique_merge((i_overlap, j_overlap)))
-    return merged if range_query else merged[0], merged[-1]
+    return merged[0], merged[-1] if range_query else merged
+
+
+def unique_merge(v):  # https://stackoverflow.com/a/59361748
+    last = None
+    for a in merge(*v):
+        if a != last:
+            last = a
+            yield a
 
 
 def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_query):
+    i_values, j_values = sorted(set(i_values)), sorted(set(j_values))
+
     if (
         len(i_values) == 0
         or len(j_values) == 0
@@ -257,8 +275,6 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
         or j_values[-1] < j_values[0]
     ):
         return pd.DataFrame()
-
-    i_values, j_values = sorted(set(i_values)), sorted(set(j_values))
 
     intervals = []
     for subgroup in chromosome_group.values():
@@ -340,19 +356,9 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
     return maf_result
 
 
-def convert_maf_h5(infile, outfile):
-    f = h5py.File(outfile, "a")
-    group = f.require_group("aux")
-
-    maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
-    maf = maf.sort_values("MAF")
-    maf = maf[["Position", "MAF"]].to_numpy()
-    group.require_dataset(
-        "MAF", data=maf, shape=maf.shape, dtype=maf.dtype, compression="gzip"
-    )
-
-
-# maybe make an object
+# -----------------------------------------------------------
+# CLI WRAPPERS
+# -----------------------------------------------------------
 
 
 @click.group()

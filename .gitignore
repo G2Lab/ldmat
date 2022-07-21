@@ -3,3 +3,4 @@
 !.pre-commit-config.yaml
 data/*
 __pycache__/*
+graphics/*

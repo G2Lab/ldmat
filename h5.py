@@ -149,43 +149,37 @@ def add_slice_to_df(df, new_slice):
         return new_slice
 
     # find index overlap
+    row_start, row_end = None, None
     if new_slice.index[0] in df.index:
+        row_start = new_slice.index[0]
         if new_slice.index[-1] in df.index:
-            index_overlap = (new_slice.index[0], new_slice.index[-1])
+            row_end = new_slice.index[-1]
         else:
-            index_overlap = (new_slice.index[0], df.index[-1])
-    else:
-        index_overlap = None
+            row_end = df.index[-1]
 
     # find column overlap
+    col_start, col_end = None, None
     if new_slice.columns[0] in df.columns:
+        col_start = new_slice.columns[0]
         if new_slice.columns[-1] in df.columns:
-            column_overlap = (new_slice.columns[0], new_slice.columns[-1])
+            col_end = new_slice.columns[-1]
         else:
-            column_overlap = (new_slice.columns[0], df.columns[-1])
-    else:
-        column_overlap = None
+            col_end = df.columns[-1]
 
-    if index_overlap and column_overlap:
-        df.loc[
-            index_overlap[0] : index_overlap[1], column_overlap[0] : column_overlap[1]
-        ] = new_slice.loc[
-            index_overlap[0] : index_overlap[1], column_overlap[0] : column_overlap[1]
+    if row_start and col_start:
+        df.loc[row_start:row_end, col_start:col_end] = new_slice.loc[
+            row_start:row_end, col_start:col_end
         ]
 
-        right_slice = new_slice.loc[
-            index_overlap[0] : index_overlap[1], column_overlap[1] :
-        ].iloc[1:, 1:]
+        right_slice = new_slice.loc[row_start:row_end, col_end:].iloc[1:, 1:]
         df = pd.concat((df, right_slice), axis=1)
 
-        bottom_slice = new_slice.loc[index_overlap[1] :, column_overlap[0] :].iloc[
-            1:, 1:
-        ]
+        bottom_slice = new_slice.loc[row_end:, col_start:].iloc[1:, 1:]
         return pd.concat((df, bottom_slice), axis=0)
 
-    elif index_overlap:
+    elif row_start:
         return pd.concat((df, new_slice), axis=1)
-    elif column_overlap:
+    elif col_start:
         return pd.concat((df, new_slice), axis=0)
     else:
         return pd.concat((df, new_slice))

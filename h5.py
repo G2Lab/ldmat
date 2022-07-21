@@ -288,7 +288,8 @@ def unique_merge(v):  # https://stackoverflow.com/a/59361748
 
 
 def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_query):
-    i_values, j_values = sorted(set(i_values)), sorted(set(j_values))
+    if not range_query:
+        i_values, j_values = sorted(set(i_values)), sorted(set(j_values))
 
     if (
         len(i_values) == 0

@@ -142,25 +142,53 @@ def convert_maf_h5(infile, outfile):
 # -----------------------------------------------------------
 
 
-def add_slice_to_df(df, slice, axis):
-    if slice.empty:
+def add_slice_to_df(df, new_slice):
+    if new_slice.empty:
         return df
     if df is None:
-        return slice
-    if df.axes[axis][-1] not in slice.axes[axis]:
-        return pd.concat((df, slice), axis=axis)
+        return new_slice
 
-    if axis == 0:
-        infill = slice.loc[: df.index[-1], :]
-        extension = slice.loc[df.index[-1] :, :].iloc[1:, :]
+    # find index overlap
+    if new_slice.index[0] in df.index:
+        if new_slice.index[-1] in df.index:
+            index_overlap = (new_slice.index[0], new_slice.index[-1])
+        else:
+            index_overlap = (new_slice.index[0], df.index[-1])
     else:
-        infill = slice.loc[:, : df.columns[-1]]
-        extension = slice.loc[:, df.columns[-1] :].iloc[:, 1:]
+        index_overlap = None
 
-    df.loc[
-        infill.index[0] : infill.index[-1], infill.columns[0] : infill.columns[-1]
-    ] = infill
-    return pd.concat((df, extension), axis=axis)
+    # find column overlap
+    if new_slice.columns[0] in df.columns:
+        if new_slice.columns[-1] in df.columns:
+            column_overlap = (new_slice.columns[0], new_slice.columns[-1])
+        else:
+            column_overlap = (new_slice.columns[0], df.columns[-1])
+    else:
+        column_overlap = None
+
+    if index_overlap and column_overlap:
+        df.loc[
+            index_overlap[0] : index_overlap[1], column_overlap[0] : column_overlap[1]
+        ] = new_slice.loc[
+            index_overlap[0] : index_overlap[1], column_overlap[0] : column_overlap[1]
+        ]
+
+        right_slice = new_slice.loc[
+            index_overlap[0] : index_overlap[1], column_overlap[1] :
+        ].iloc[1:, 1:]
+        df = pd.concat((df, right_slice), axis=1)
+
+        bottom_slice = new_slice.loc[index_overlap[1] :, column_overlap[0] :].iloc[
+            1:, 1:
+        ]
+        return pd.concat((df, bottom_slice), axis=0)
+
+    elif index_overlap:
+        return pd.concat((df, new_slice), axis=1)
+    elif column_overlap:
+        return pd.concat((df, new_slice), axis=0)
+    else:
+        return pd.concat((df, new_slice))
 
 
 def add_main_slice_to_df(df, main_slice):
@@ -304,8 +332,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
                 main_slice = main_slice + main_slice.T
                 np.fill_diagonal(main_slice.values, DIAGONAL_LD)
                 main_slice = subselect(main_slice, i_overlap, j_overlap, range_query)
-
-                df = add_main_slice_to_df(df, main_slice)
+                df = add_slice_to_df(df, main_slice)
 
             # right slice - all i in overlap, all j > interval end
         if i_overlap and j_values[-1] > interval[1]:
@@ -315,7 +342,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
                 overlap(j_values, (interval[1], np.inf), range_query),
                 range_query,
             )
-            df = add_slice_to_df(df, right_slice, 1)
+            df = add_slice_to_df(df, right_slice)
 
         # bottom slice - all j in overlap, all i > interval end
         if j_overlap and i_values[-1] > interval[1]:
@@ -325,8 +352,10 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
                 overlap(i_values, (interval[1], np.inf), range_query),
                 range_query,
             ).T
-            df = add_slice_to_df(df, bottom_slice, 0)
+            df = add_slice_to_df(df, bottom_slice)
 
+    if df is None:
+        return pd.DataFrame()
     return df.fillna(0)
 
 

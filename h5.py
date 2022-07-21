@@ -391,29 +391,6 @@ def cli():
 
 
 @cli.command()
-@click.argument("ld_file")
-@click.option("--i_start", type=int)
-@click.option("--i_end", type=int)
-@click.option("--j_start", type=int)
-@click.option("--j_end", type=int)
-@click.option("--outfile", "-o", default=None)
-@click.option("--symmetric", "-s", is_flag=True, default=False)
-def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
-    if symmetric and (j_start is not None or j_end is not None):
-        raise ValueError("Symmetric flag only compatible with i indexing.")
-    if symmetric:
-        j_start, j_end = i_start, i_end
-    res = get_submatrix_from_chromosome(
-        h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
-    )
-    if outfile:
-        # name index?
-        res.to_csv(outfile)
-    else:
-        print(res)
-
-
-@cli.command()
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
@@ -422,27 +399,6 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
 @click.option("--end_snip", "-e", type=int, default=None)
 def convert(infile, outfile, precision, decimals, start_snip, end_snip):
     convert_h5(infile, outfile, precision, decimals, start_snip, end_snip)
-
-
-@cli.command()
-@click.argument("infile", type=click.Path())
-@click.argument("outfile", type=click.Path(exists=False))
-def convert_maf(infile, outfile):
-    convert_maf_h5(infile, outfile)
-
-
-@cli.command()
-@click.argument("ld_file")
-@click.option("--lower_bound", "-l", type=float, default=0)
-@click.option("--upper_bound", "-u", type=float, default=0.5)
-@click.option("--outfile", "-o", default=None)
-def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
-    res = get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
-    if outfile:
-        # name index?
-        res.to_csv(outfile)
-    else:
-        print(res)
 
 
 @cli.command()
@@ -486,6 +442,50 @@ def convert_chromosome(directory, chromosome, outfile, precision, decimals, star
                 next_covered_snip,
             )
             first_missing_snip = next_covered_snip
+
+
+@cli.command()
+@click.argument("infile", type=click.Path())
+@click.argument("outfile", type=click.Path(exists=False))
+def convert_maf(infile, outfile):
+    convert_maf_h5(infile, outfile)
+
+
+@cli.command()
+@click.argument("ld_file")
+@click.option("--i_start", type=int)
+@click.option("--i_end", type=int)
+@click.option("--j_start", type=int)
+@click.option("--j_end", type=int)
+@click.option("--outfile", "-o", default=None)
+@click.option("--symmetric", "-s", is_flag=True, default=False)
+def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
+    if symmetric and (j_start is not None or j_end is not None):
+        raise ValueError("Symmetric flag only compatible with i indexing.")
+    if symmetric:
+        j_start, j_end = i_start, i_end
+    res = get_submatrix_from_chromosome(
+        h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
+    )
+    if outfile:
+        # name index?
+        res.to_csv(outfile)
+    else:
+        print(res)
+
+
+@cli.command()
+@click.argument("ld_file")
+@click.option("--lower_bound", "-l", type=float, default=0)
+@click.option("--upper_bound", "-u", type=float, default=0.5)
+@click.option("--outfile", "-o", default=None)
+def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
+    res = get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
+    if outfile:
+        # name index?
+        res.to_csv(outfile)
+    else:
+        print(res)
 
 
 if __name__ == "__main__":

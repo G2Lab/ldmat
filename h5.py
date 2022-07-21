@@ -8,6 +8,7 @@ from heapq import merge
 
 DIAGONAL_LD = 1
 FULL_MATRIX_NAME = "full"
+DEFAULT_DECIMALS = 3
 
 MAF_COLS = [
     "Alternate_id",
@@ -38,7 +39,12 @@ def adjust_to_zero(sparse_matrix, precision):
 
 
 def convert_h5(
-    infile, outfile, precision=0, decimals=3, start_snip=None, end_snip=None
+    infile,
+    outfile,
+    precision=0,
+    decimals=DEFAULT_DECIMALS,
+    start_snip=None,
+    end_snip=None,
 ):
     base_infile = os.path.splitext(infile)[0]
 
@@ -394,7 +400,7 @@ def cli():
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
-@click.option("--decimals", "-d", type=int, default=3)
+@click.option("--decimals", "-d", type=int, default=DEFAULT_DECIMALS)
 @click.option("--start_snip", "-s", type=int, default=None)
 @click.option("--end_snip", "-e", type=int, default=None)
 def convert(infile, outfile, precision, decimals, start_snip, end_snip):
@@ -406,7 +412,7 @@ def convert(infile, outfile, precision, decimals, start_snip, end_snip):
 @click.argument("chromosome", type=int)
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
-@click.option("--decimals", "-d", type=int, default=3)
+@click.option("--decimals", "-d", type=int, default=DEFAULT_DECIMALS)
 @click.option("--start_snip", "-s", type=int, default=1)
 def convert_chromosome(directory, chromosome, outfile, precision, decimals, start_snip):
     print(f"Converting chromosome {chromosome}")

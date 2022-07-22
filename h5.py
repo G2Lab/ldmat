@@ -8,7 +8,6 @@ from heapq import merge
 
 DIAGONAL_LD = 1
 FULL_MATRIX_NAME = "full"
-DEFAULT_DECIMALS = 3
 
 MAF_COLS = [
     "Alternate_id",
@@ -42,7 +41,7 @@ def convert_h5(
     infile,
     outfile,
     precision=0,
-    decimals=DEFAULT_DECIMALS,
+    decimals=None,
     start_snip=None,
     end_snip=None,
 ):
@@ -61,7 +60,8 @@ def convert_h5(
 
     sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
     sparse_mat.setdiag(0)
-    sparse_mat.data = np.round(sparse_mat.data, decimals)
+    if decimals:
+        sparse_mat.data = np.round(sparse_mat.data, decimals)
     sparse_mat = adjust_to_zero(sparse_mat, precision)
 
     pos_df = metadata_to_df(base_infile + ".gz")
@@ -400,7 +400,7 @@ def cli():
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
-@click.option("--decimals", "-d", type=int, default=DEFAULT_DECIMALS)
+@click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start_snip", "-s", type=int, default=None)
 @click.option("--end_snip", "-e", type=int, default=None)
 def convert(infile, outfile, precision, decimals, start_snip, end_snip):
@@ -412,7 +412,7 @@ def convert(infile, outfile, precision, decimals, start_snip, end_snip):
 @click.argument("chromosome", type=int)
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
-@click.option("--decimals", "-d", type=int, default=DEFAULT_DECIMALS)
+@click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start_snip", "-s", type=int, default=1)
 def convert_chromosome(directory, chromosome, outfile, precision, decimals, start_snip):
     print(f"Converting chromosome {chromosome}")

@@ -506,6 +506,8 @@ def convert_chromosome(
             )
             first_missing_locus = next_covered_locus
 
+            print("{:.2f}% complete".format(((i + 1) * 100) / len(filtered)))
+
 
 @cli.command()
 @click.argument("infile", type=click.Path())

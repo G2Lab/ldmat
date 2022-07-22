@@ -5,6 +5,8 @@ import pandas as pd
 import click
 import h5py
 from heapq import merge
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 DIAGONAL_LD = 1
 
@@ -400,6 +402,22 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
 
 
 # -----------------------------------------------------------
+# VISUALIZATION FUNCTIONS
+# -----------------------------------------------------------
+
+
+def plot_heatmap(df, outfile):
+    print("Plotting...")
+    figsize = (33, 27) if outfile else (11, 9)
+    f, ax = plt.subplots(figsize=figsize)
+    sns.heatmap(df, vmin=0, vmax=1, center=0)
+    if outfile:
+        f.savefig(outfile.split(".")[0], dpi=1000)
+    else:
+        plt.show()
+
+
+# -----------------------------------------------------------
 # CLI WRAPPERS
 # -----------------------------------------------------------
 
@@ -480,7 +498,8 @@ def convert_maf(infile, outfile):
 @click.option("--j_end", type=int)
 @click.option("--outfile", "-o", default=None)
 @click.option("--symmetric", "-s", is_flag=True, default=False)
-def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
+@click.option("--plot", "-p", is_flag=True, default=False)
+def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric, plot):
     if symmetric and (j_start is not None or j_end is not None):
         raise ValueError("Symmetric flag only compatible with i indexing.")
     if symmetric:
@@ -494,19 +513,26 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric):
     else:
         print(res)
 
+    if plot:
+        plot_heatmap(res, outfile)
+
 
 @cli.command()
 @click.argument("ld_file")
 @click.option("--lower_bound", "-l", type=float, default=0)
 @click.option("--upper_bound", "-u", type=float, default=0.5)
 @click.option("--outfile", "-o", default=None)
-def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile):
+@click.option("--plot", "-p", is_flag=True, default=False)
+def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile, plot):
     res = get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
     if outfile:
         # name index?
         res.to_csv(outfile)
     else:
         print(res)
+
+    if plot:
+        plot_heatmap(res, outfile)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import h5py
 from heapq import merge
 import seaborn as sns
 import matplotlib.pyplot as plt
+from functools import wraps
 
 DIAGONAL_LD = 1
 
@@ -422,6 +423,29 @@ def plot_heatmap(df, outfile):
 # -----------------------------------------------------------
 
 
+def handle_output(res, outfile, plot):
+    if outfile:
+        # name index?
+        res.to_csv(outfile)
+    else:
+        print(res)
+
+    if plot:
+        plot_heatmap(res, outfile)
+
+
+def output_wrapper(function):
+    function = click.option("--outfile", "-o", type=click.Path(exists=False))(function)
+    function = click.option("--plot", "-p", is_flag=True, default=False)(function)
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        result = function(*args, **kwargs)
+        handle_output(result, kwargs["outfile"], kwargs["plot"])
+
+    return wrapper
+
+
 @click.group()
 def cli():
     pass
@@ -496,25 +520,16 @@ def convert_maf(infile, outfile):
 @click.option("--i_end", type=int)
 @click.option("--j_start", type=int)
 @click.option("--j_end", type=int)
-@click.option("--outfile", "-o", default=None)
 @click.option("--symmetric", "-s", is_flag=True, default=False)
-@click.option("--plot", "-p", is_flag=True, default=False)
-def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric, plot):
+@output_wrapper
+def submatrix(ld_file, i_start, i_end, j_start, j_end, symmetric, outfile, plot):
     if symmetric and (j_start is not None or j_end is not None):
         raise ValueError("Symmetric flag only compatible with i indexing.")
     if symmetric:
         j_start, j_end = i_start, i_end
-    res = get_submatrix_from_chromosome(
+    return get_submatrix_from_chromosome(
         h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
     )
-    if outfile:
-        # name index?
-        res.to_csv(outfile)
-    else:
-        print(res)
-
-    if plot:
-        plot_heatmap(res, outfile)
 
 
 @cli.command()
@@ -522,8 +537,7 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric, plot)
 @click.option("--row_list", "-r")
 @click.option("--col_list", "-c")
 @click.option("--symmetric", "-s", is_flag=True, default=False)
-@click.option("--outfile", "-o", default=None)
-@click.option("--plot", "-p", is_flag=True, default=False)
+@output_wrapper
 def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
     """
     Works with CSVs of the form:
@@ -556,35 +570,18 @@ def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
             .to_numpy()
         )
 
-    res = get_submatrix_from_chromosome(
+    return get_submatrix_from_chromosome(
         h5py.File(ld_file, "r"), i_list, j_list, range_query=False
     )
-    if outfile:
-        # name index?
-        res.to_csv(outfile)
-    else:
-        print(res)
-
-    if plot:
-        plot_heatmap(res, outfile)
 
 
 @cli.command()
 @click.argument("ld_file")
 @click.option("--lower_bound", "-l", type=float, default=0)
 @click.option("--upper_bound", "-u", type=float, default=0.5)
-@click.option("--outfile", "-o", default=None)
-@click.option("--plot", "-p", is_flag=True, default=False)
+@output_wrapper
 def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile, plot):
-    res = get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
-    if outfile:
-        # name index?
-        res.to_csv(outfile)
-    else:
-        print(res)
-
-    if plot:
-        plot_heatmap(res, outfile)
+    return get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
 
 
 if __name__ == "__main__":

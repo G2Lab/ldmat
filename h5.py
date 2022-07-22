@@ -7,7 +7,14 @@ import h5py
 from heapq import merge
 
 DIAGONAL_LD = 1
-FULL_MATRIX_NAME = "full"
+
+LD_DATASET = "LD_scores"
+POSITION_DATASET = "positions"
+NAME_DATASET = "names"
+CHUNK_PREFIX = "chunk"
+START_ATTR = "start_locus"
+END_ATTR = "end_locus"
+PREC_ATTR = "precision"
 
 MAF_COLS = [
     "Alternate_id",
@@ -42,21 +49,21 @@ def convert_h5(
     outfile,
     precision=0,
     decimals=None,
-    start_snip=None,
-    end_snip=None,
+    start_locus=None,
+    end_locus=None,
 ):
     base_infile = os.path.splitext(infile)[0]
 
-    if not start_snip or not end_snip:
+    if not start_locus or not end_locus:
         filename = base_infile.split("/")[-1]
-        chromosome, start_snip, end_snip = filename.split("_")
-        start_snip, end_snip = int(start_snip), int(end_snip)
+        chromosome, start_locus, end_locus = filename.split("_")
+        start_locus, end_locus = int(start_locus), int(end_locus)
 
-    print(f"Converting {infile} snips {start_snip} to {end_snip}")
+    print(f"Converting {infile} loci {start_locus} to {end_locus}")
 
     f = h5py.File(outfile, "a")
 
-    group = f.require_group(f"snip_{start_snip}")
+    group = f.require_group(f"{CHUNK_PREFIX}_{start_locus}")
 
     sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
     sparse_mat.setdiag(0)
@@ -66,7 +73,7 @@ def convert_h5(
 
     pos_df = metadata_to_df(base_infile + ".gz")
     group.require_dataset(
-        "positions",
+        POSITION_DATASET,
         data=pos_df,
         compression="gzip",
         shape=pos_df.shape,
@@ -74,26 +81,30 @@ def convert_h5(
     )
     names = pos_df.index.to_numpy().astype("S")
     group.require_dataset(
-        "names", data=names, shape=names.shape, dtype=names.dtype, compression="gzip"
+        NAME_DATASET,
+        data=names,
+        shape=names.shape,
+        dtype=names.dtype,
+        compression="gzip",
     )
 
-    group.attrs["start_snip"] = start_snip
-    group.attrs["end_snip"] = end_snip
-    group.attrs["precision"] = precision
+    group.attrs[START_ATTR] = start_locus
+    group.attrs[END_ATTR] = end_locus
+    group.attrs[PREC_ATTR] = precision
 
     pos_df["relative_pos"] = np.arange(len(pos_df))
-    # actually should not filter, since need for rows. instead save start and end snips for columns
-    pos_df = pos_df[pos_df.BP.between(start_snip, end_snip)]
+    # actually should not filter, since need for rows. instead save start and end loci for columns
+    pos_df = pos_df[pos_df.BP.between(start_locus, end_locus)]
 
     if len(pos_df) == 0:
-        print(f"No data found between snips {start_snip} and {end_snip}")
+        print(f"No data found between loci {start_locus} and {end_locus}")
         return None
 
     lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
     sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
     dense = sparse_mat.todense()
     group.require_dataset(
-        "full",
+        LD_DATASET,
         data=dense,
         compression="gzip",
         compression_opts=9,
@@ -239,7 +250,9 @@ def subselect(df, rows, columns, range_query):
 
 
 def extract_metadata_df_from_group(group):
-    df = pd.DataFrame(group["positions"], columns=["BP"], index=group["names"])
+    df = pd.DataFrame(
+        group[POSITION_DATASET], columns=["BP"], index=group[NAME_DATASET]
+    )
     df["relative_pos"] = np.arange(len(df))
     return df
 
@@ -259,12 +272,12 @@ def get_horizontal_slice(group, rows, columns, range_query):
     h_slice = None
     if len(row_positions) and len(col_positions):
         if range_query:
-            h_slice = group[FULL_MATRIX_NAME][
+            h_slice = group[LD_DATASET][
                 row_positions[0] : row_positions[-1] + 1,
                 col_positions[0] : col_positions[-1] + 1,
             ]
         else:
-            h_slice = group[FULL_MATRIX_NAME][row_positions.tolist()][:, col_positions]
+            h_slice = group[LD_DATASET][row_positions.tolist()][:, col_positions]
 
     return pd.DataFrame(
         h_slice,
@@ -308,7 +321,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
     intervals = []
     for subgroup in chromosome_group.values():
         if subgroup.name != "/aux":
-            intervals.append((subgroup.attrs["start_snip"], subgroup.attrs["end_snip"]))
+            intervals.append((subgroup.attrs[START_ATTR], subgroup.attrs[END_ATTR]))
 
     intervals.sort(key=lambda x: x[0])
 
@@ -319,7 +332,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
         i_overlap = overlap(i_values, interval, range_query)
         j_overlap = overlap(j_values, interval, range_query)
 
-        group = chromosome_group[f"snip_{interval[0]}"]
+        group = chromosome_group[f"{CHUNK_PREFIX}_{interval[0]}"]
 
         # get right overlap, bottom overlap, triangle overlap
         if i_overlap and j_overlap:
@@ -401,10 +414,10 @@ def cli():
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--decimals", "-d", type=int, default=None)
-@click.option("--start_snip", "-s", type=int, default=None)
-@click.option("--end_snip", "-e", type=int, default=None)
-def convert(infile, outfile, precision, decimals, start_snip, end_snip):
-    convert_h5(infile, outfile, precision, decimals, start_snip, end_snip)
+@click.option("--start_locus", "-s", type=int, default=None)
+@click.option("--end_locus", "-e", type=int, default=None)
+def convert(infile, outfile, precision, decimals, start_locus, end_locus):
+    convert_h5(infile, outfile, precision, decimals, start_locus, end_locus)
 
 
 @cli.command()
@@ -413,8 +426,10 @@ def convert(infile, outfile, precision, decimals, start_snip, end_snip):
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--decimals", "-d", type=int, default=None)
-@click.option("--start_snip", "-s", type=int, default=1)
-def convert_chromosome(directory, chromosome, outfile, precision, decimals, start_snip):
+@click.option("--start_locus", "-s", type=int, default=1)
+def convert_chromosome(
+    directory, chromosome, outfile, precision, decimals, start_locus
+):
     print(f"Converting chromosome {chromosome}")
 
     filtered = []
@@ -428,26 +443,26 @@ def convert_chromosome(directory, chromosome, outfile, precision, decimals, star
 
     filtered.sort(key=lambda x: x[1])
 
-    start_snip = max(start_snip, filtered[0][1])
+    start_locus = max(start_locus, filtered[0][1])
 
-    first_missing_snip = start_snip
+    first_missing_locus = start_locus
 
-    for i, (file, snip) in enumerate(filtered):
-        if snip >= start_snip:
+    for i, (file, locus) in enumerate(filtered):
+        if locus >= start_locus:
             print(f"Converting {file}")
             if i + 1 < len(filtered):
-                next_covered_snip = filtered[i + 1][1]
+                next_covered_locus = filtered[i + 1][1]
             else:
-                next_covered_snip = np.inf
+                next_covered_locus = np.inf
             convert_h5(
                 os.path.join(directory, file),
                 outfile,
                 precision,
                 decimals,
-                first_missing_snip,
-                next_covered_snip,
+                first_missing_locus,
+                next_covered_locus,
             )
-            first_missing_snip = next_covered_snip
+            first_missing_locus = next_covered_locus
 
 
 @cli.command()

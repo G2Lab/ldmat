@@ -519,6 +519,58 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, symmetric, plot)
 
 @cli.command()
 @click.argument("ld_file")
+@click.option("--row_list", "-r")
+@click.option("--col_list", "-c")
+@click.option("--symmetric", "-s", is_flag=True, default=False)
+@click.option("--outfile", "-o", default=None)
+@click.option("--plot", "-p", is_flag=True, default=False)
+def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
+    """
+    Works with CSVs of the form:
+    chr21:9411245
+    chr21:9411410
+    chr21:9411485
+    ...
+    """
+
+    if symmetric and col_list is not None:
+        raise ValueError("Symmetric flag only compatible with row indexing.")
+
+    i_list = (
+        pd.read_csv(row_list, header=None)
+        .iloc[:, 0]
+        .str.split(":")
+        .str[1]
+        .astype(int)
+        .to_numpy()
+    )
+    if symmetric:
+        j_list = i_list
+    else:
+        j_list = (
+            pd.read_csv(col_list, header=None)
+            .iloc[:, 0]
+            .str.split(":")
+            .str[1]
+            .astype(int)
+            .to_numpy()
+        )
+
+    res = get_submatrix_from_chromosome(
+        h5py.File(ld_file, "r"), i_list, j_list, range_query=False
+    )
+    if outfile:
+        # name index?
+        res.to_csv(outfile)
+    else:
+        print(res)
+
+    if plot:
+        plot_heatmap(res, outfile)
+
+
+@cli.command()
+@click.argument("ld_file")
 @click.option("--lower_bound", "-l", type=float, default=0)
 @click.option("--upper_bound", "-u", type=float, default=0.5)
 @click.option("--outfile", "-o", default=None)

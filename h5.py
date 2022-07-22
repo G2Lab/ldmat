@@ -356,8 +356,8 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
             df = add_slice_to_df(df, bottom_slice)
 
     if df is None:
-        return pd.DataFrame()
-    return df.fillna(0)
+        df = pd.DataFrame()
+    return df
 
 
 def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):

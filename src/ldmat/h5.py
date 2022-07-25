@@ -122,6 +122,44 @@ def convert_h5(
     )
 
 
+def convert_full_chromsome_h5(
+    directory, chromosome, outfile, precision, decimals, start_locus
+):
+    filtered = []
+    for file in os.listdir(directory):
+        if (
+            os.path.isfile(os.path.join(directory, file))
+            and file.startswith(f"chr{chromosome}_")
+            and file.endswith(".npz")
+        ):
+            filtered.append((file, int(file.split("_")[1])))
+
+    filtered.sort(key=lambda x: x[1])
+
+    start_locus = max(start_locus, filtered[0][1])
+
+    first_missing_locus = start_locus
+
+    for i, (file, locus) in enumerate(filtered):
+        if locus >= start_locus:
+            print(f"Converting {file}")
+            if i + 1 < len(filtered):
+                next_covered_locus = filtered[i + 1][1]
+            else:
+                next_covered_locus = np.inf
+            convert_h5(
+                os.path.join(directory, file),
+                outfile,
+                precision,
+                decimals,
+                first_missing_locus,
+                next_covered_locus,
+            )
+            first_missing_locus = next_covered_locus
+
+            print("{:.2f}% complete".format(((i + 1) * 100) / len(filtered)))
+
+
 def metadata_to_df(gz_file):
     df_ld_snps = pd.read_table(gz_file, sep="\s+")
     df_ld_snps.rename(

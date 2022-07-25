@@ -1,5 +1,3 @@
-import numpy as np
-import os
 import pandas as pd
 import click
 import h5py
@@ -7,6 +5,7 @@ from functools import wraps
 from h5 import (
     plot_heatmap,
     convert_h5,
+    convert_full_chromsome_h5,
     convert_maf_h5,
     get_submatrix_from_chromosome,
     get_submatrix_by_maf_range,
@@ -69,39 +68,9 @@ def convert_chromosome(
 ):
     print(f"Converting chromosome {chromosome}")
 
-    filtered = []
-    for file in os.listdir(directory):
-        if (
-            os.path.isfile(os.path.join(directory, file))
-            and file.startswith(f"chr{chromosome}_")
-            and file.endswith(".npz")
-        ):
-            filtered.append((file, int(file.split("_")[1])))
-
-    filtered.sort(key=lambda x: x[1])
-
-    start_locus = max(start_locus, filtered[0][1])
-
-    first_missing_locus = start_locus
-
-    for i, (file, locus) in enumerate(filtered):
-        if locus >= start_locus:
-            print(f"Converting {file}")
-            if i + 1 < len(filtered):
-                next_covered_locus = filtered[i + 1][1]
-            else:
-                next_covered_locus = np.inf
-            convert_h5(
-                os.path.join(directory, file),
-                outfile,
-                precision,
-                decimals,
-                first_missing_locus,
-                next_covered_locus,
-            )
-            first_missing_locus = next_covered_locus
-
-            print("{:.2f}% complete".format(((i + 1) * 100) / len(filtered)))
+    convert_full_chromsome_h5(
+        directory, chromosome, outfile, precision, decimals, start_locus
+    )
 
 
 @cli.command()

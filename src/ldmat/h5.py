@@ -7,6 +7,8 @@ from heapq import merge
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+VERSION = 0.1
+
 DIAGONAL_LD = 1
 
 LD_DATASET = "LD_scores"
@@ -16,6 +18,7 @@ CHUNK_PREFIX = "chunk"
 START_ATTR = "start_locus"
 END_ATTR = "end_locus"
 PREC_ATTR = "precision"
+VERSION_ATTR = "version"
 
 MAF_COLS = [
     "Alternate_id",
@@ -63,6 +66,10 @@ def convert_h5(
     print(f"Converting {infile} loci {start_locus} to {end_locus}")
 
     f = h5py.File(outfile, "a")
+
+    if len(f.keys()) == 0:  # freshly created
+        f.attrs[VERSION_ATTR] = VERSION
+    validate_version(f)
 
     group = f.require_group(f"{CHUNK_PREFIX}_{start_locus}")
 
@@ -308,6 +315,8 @@ def unique_merge(v):  # https://stackoverflow.com/a/59361748
 
 
 def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_query):
+    validate_version(chromosome_group)
+
     if not range_query:
         i_values, j_values = sorted(set(i_values)), sorted(set(j_values))
 
@@ -414,3 +423,16 @@ def plot_heatmap(df, outfile):
         f.savefig(outfile.split(".")[0], dpi=1000)
     else:
         plt.show()
+
+
+# -----------------------------------------------------------
+# METADATA FUNCTIONS
+# -----------------------------------------------------------
+
+
+def validate_version(f):
+    existing_version = f.attrs.get(VERSION_ATTR)
+    if existing_version != VERSION:
+        raise ValueError(
+            f"Version mismatch! Existing file is {existing_version}, but code version is {VERSION}"
+        )

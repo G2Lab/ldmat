@@ -121,8 +121,11 @@ def convert_h5(
         scaleoffset=decimals,
     )
 
+    f.attrs[START_ATTR] = min(f.attrs.get(START_ATTR, start_locus), start_locus)
+    f.attrs[END_ATTR] = max(f.attrs.get(END_ATTR, end_locus), end_locus)
 
-def convert_full_chromsome_h5(
+
+def convert_full_chromosome_h5(
     directory, chromosome, outfile, precision, decimals, start_locus
 ):
     filtered = []

@@ -5,7 +5,7 @@ from functools import wraps
 from h5 import (
     plot_heatmap,
     convert_h5,
-    convert_full_chromsome_h5,
+    convert_full_chromosome_h5,
     convert_maf_h5,
     get_submatrix_from_chromosome,
     get_submatrix_by_maf_range,
@@ -68,7 +68,7 @@ def convert_chromosome(
 ):
     print(f"Converting chromosome {chromosome}")
 
-    convert_full_chromsome_h5(
+    convert_full_chromosome_h5(
         directory, chromosome, outfile, precision, decimals, start_locus
     )
 

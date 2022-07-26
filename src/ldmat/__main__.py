@@ -8,6 +8,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import click
 from functools import wraps
+import logging
 
 
 VERSION = "0.0.1"
@@ -71,7 +72,7 @@ def convert_h5(
         chromosome, start_locus, end_locus = filename.split("_")
         start_locus, end_locus = int(start_locus), int(end_locus)
 
-    print(f"Converting {infile} loci {start_locus} to {end_locus}")
+    logging.debug(f"Converting {infile} loci {start_locus} to {end_locus}")
 
     f = h5py.File(outfile, "a")
 
@@ -117,7 +118,7 @@ def convert_h5(
     pos_df = pos_df[pos_df.BP.between(start_locus, end_locus)]
 
     if len(pos_df) == 0:
-        print(f"No data found between loci {start_locus} and {end_locus}")
+        logging.warning(f"No data found between loci {start_locus} and {end_locus}")
         return None
 
     lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
@@ -161,7 +162,7 @@ def convert_full_chromosome_h5(
 
     for i, (file, locus) in enumerate(filtered):
         if locus >= start_locus:
-            print(f"Converting {file}")
+            logging.debug(f"Converting {file}")
             if i + 1 < len(filtered):
                 next_covered_locus = filtered[i + 1][1]
             else:
@@ -176,7 +177,7 @@ def convert_full_chromosome_h5(
             )
             first_missing_locus = next_covered_locus
 
-            print("{:.2f}% complete".format(((i + 1) * 100) / len(filtered)))
+            logging.info("{:.2f}% complete".format(((i + 1) * 100) / len(filtered)))
 
 
 def metadata_to_df(gz_file):
@@ -458,7 +459,7 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
     indices = get_maf_indices_by_range(
         chromosome_group[AUX_GROUP][MAF_DATASET], lower_bound, upper_bound
     )
-    print(f"Found {len(indices)} matching MAFs")
+    logging.debug(f"Found {len(indices)} matching MAFs")
     maf_result = get_submatrix_from_chromosome(
         chromosome_group, indices, indices, range_query=False
     )
@@ -472,7 +473,7 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
 
 
 def plot_heatmap(df, outfile):
-    print("Plotting...")
+    logging.info("Plotting...")
     figsize = (33, 27) if outfile else (11, 9)
     f, ax = plt.subplots(figsize=figsize)
     sns.heatmap(df, vmin=0, vmax=1, center=0)
@@ -549,7 +550,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 def convert_chromosome(
     directory, chromosome, outfile, precision, decimals, start_locus
 ):
-    print(f"Converting chromosome {chromosome}")
+    logging.debug(f"Converting chromosome {chromosome}")
 
     convert_full_chromosome_h5(
         directory, chromosome, outfile, precision, decimals, start_locus

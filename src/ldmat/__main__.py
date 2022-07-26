@@ -10,7 +10,7 @@ import click
 from functools import wraps
 
 
-VERSION = 0.1
+VERSION = "0.0.1"
 
 DIAGONAL_LD = 1
 
@@ -20,8 +20,10 @@ NAME_DATASET = "names"
 CHUNK_PREFIX = "chunk"
 START_ATTR = "start_locus"
 END_ATTR = "end_locus"
-PREC_ATTR = "precision"
+PREC_ATTR = "min_score"
+DEC_ATTR = "kept_decimal_places"
 VERSION_ATTR = "version"
+CHROMOSOME_ATTR = "chromosome"
 
 MAF_COLS = [
     "Alternate_id",
@@ -102,6 +104,7 @@ def convert_h5(
     group.attrs[START_ATTR] = start_locus
     group.attrs[END_ATTR] = end_locus
     group.attrs[PREC_ATTR] = precision
+    group.attrs[DEC_ATTR] = decimals
 
     pos_df["relative_pos"] = np.arange(len(pos_df))
     # actually should not filter, since need for rows. instead save start and end loci for columns
@@ -131,6 +134,10 @@ def convert_h5(
 def convert_full_chromosome_h5(
     directory, chromosome, outfile, precision, decimals, start_locus
 ):
+    f = h5py.File(outfile, "a")
+
+    f.attrs[CHROMOSOME_ATTR] = chromosome
+
     filtered = []
     for file in os.listdir(directory):
         if (

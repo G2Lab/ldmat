@@ -5,7 +5,7 @@
 #SBATCH --output=logs/stdout_%j.log               # Standard output and error log
 
 echo started
-source /gpfs/commons/groups/gursoy_lab/rweiner/ld/h5_script/bin/activate
+source /gpfs/commons/groups/gursoy_lab/rweiner/ld/ldpip/bin/activate
 
 echo $(python3 -V) 
 
@@ -15,8 +15,7 @@ DECIMALS=3
 
 echo finished setup
 
-python3 -u /gpfs/commons/groups/gursoy_lab/rweiner/ld/h5.py convert-chromosome \
- /gpfs/commons/groups/nygcfaculty/gursoy_knowles/UKB_ld/ $CHROMOSOME \
+ldmat convert-chromosome /gpfs/commons/groups/nygcfaculty/gursoy_knowles/UKB_ld/ $CHROMOSOME \
  /gpfs/commons/groups/gursoy_lab/rweiner/ld/data/processed/chr${CHROMOSOME}_p0_${PRECISION}d${DECIMALS}.h5 \
  -p 0.${PRECISION} -d $DECIMALS
 

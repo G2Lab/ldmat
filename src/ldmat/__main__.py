@@ -525,10 +525,18 @@ def output_wrapper(function):
 
 
 @click.group()
-@click.option("--debug", is_flag=True, default=False)
-def cli(debug):
-    if debug:
-        click.echo("Debug mode is on")
+@click.option(
+    "--log-level",
+    "-l",
+    type=click.Choice(["warning", "info", "debug"], case_sensitive=False),
+)
+def cli(log_level):
+    click.echo(f"Log level: {log_level}")
+    if log_level == "warning":
+        logging.basicConfig(level=logging.WARNING)
+    elif log_level == "info":
+        logging.basicConfig(level=logging.INFO)
+    elif log_level == "debug":
         logging.basicConfig(level=logging.DEBUG)
 
 
@@ -537,8 +545,8 @@ def cli(debug):
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--decimals", "-d", type=int, default=None)
-@click.option("--start_locus", "-s", type=int, default=None)
-@click.option("--end_locus", "-e", type=int, default=None)
+@click.option("--start-locus", "-s", type=int, default=None)
+@click.option("--end-locus", "-e", type=int, default=None)
 def convert(infile, outfile, precision, decimals, start_locus, end_locus):
     convert_h5(infile, outfile, precision, decimals, start_locus, end_locus)
 
@@ -549,7 +557,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=0)
 @click.option("--decimals", "-d", type=int, default=None)
-@click.option("--start_locus", "-s", type=int, default=1)
+@click.option("--start-locus", "-s", type=int, default=1)
 def convert_chromosome(
     directory, chromosome, outfile, precision, decimals, start_locus
 ):
@@ -568,11 +576,11 @@ def convert_maf(infile, outfile):
 
 
 @cli.command()
-@click.argument("ld_file")
-@click.option("--i_start", type=int)
-@click.option("--i_end", type=int)
-@click.option("--j_start", type=int)
-@click.option("--j_end", type=int)
+@click.argument("ld-file")
+@click.option("--i-start", type=int)
+@click.option("--i-end", type=int)
+@click.option("--j-start", type=int)
+@click.option("--j-end", type=int)
 @click.option("--symmetric", "-s", is_flag=True, default=False)
 @output_wrapper
 def submatrix(ld_file, i_start, i_end, j_start, j_end, symmetric, outfile, plot):
@@ -586,9 +594,9 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, symmetric, outfile, plot)
 
 
 @cli.command()
-@click.argument("ld_file")
-@click.option("--row_list", "-r")
-@click.option("--col_list", "-c")
+@click.argument("ld-file")
+@click.option("--row-list", "-r")
+@click.option("--col-list", "-c")
 @click.option("--symmetric", "-s", is_flag=True, default=False)
 @output_wrapper
 def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
@@ -629,9 +637,9 @@ def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
 
 
 @cli.command()
-@click.argument("ld_file")
-@click.option("--lower_bound", "-l", type=float, default=0)
-@click.option("--upper_bound", "-u", type=float, default=0.5)
+@click.argument("ld-file")
+@click.option("--lower-bound", "-l", type=float, default=0)
+@click.option("--upper-bound", "-u", type=float, default=0.5)
 @output_wrapper
 def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile, plot):
     return get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)

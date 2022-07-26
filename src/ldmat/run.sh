@@ -14,7 +14,7 @@ CHROMOSOME=21
 PRECISION="1" # Value after 0.
 DECIMALS=3
 
-ldmat --debug convert-chromosome /gpfs/commons/groups/nygcfaculty/gursoy_knowles/UKB_ld/ $CHROMOSOME \
+ldmat -l debug convert-chromosome /gpfs/commons/groups/nygcfaculty/gursoy_knowles/UKB_ld/ $CHROMOSOME \
  /gpfs/commons/groups/gursoy_lab/rweiner/ld/data/processed/chr${CHROMOSOME}_p0_${PRECISION}d${DECIMALS}.h5 \
  -p 0.${PRECISION} -d $DECIMALS
 

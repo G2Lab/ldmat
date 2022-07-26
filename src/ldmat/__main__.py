@@ -25,6 +25,8 @@ DEC_ATTR = "kept_decimal_places"
 VERSION_ATTR = "version"
 CHROMOSOME_ATTR = "chromosome"
 
+AUX_GROUP = "aux"
+
 MAF_COLS = [
     "Alternate_id",
     "RS_id",
@@ -35,6 +37,7 @@ MAF_COLS = [
     "Minor Allele",
     "Info Score",
 ]
+MAF_DATASET = "MAF"
 
 # -----------------------------------------------------------
 # CONVERSION FUNCTIONS
@@ -76,7 +79,10 @@ def convert_h5(
         f.attrs[VERSION_ATTR] = VERSION
     validate_version(f)
 
-    group = f.require_group(f"{CHUNK_PREFIX}_{start_locus}")
+    group_name = f"{CHUNK_PREFIX}_{start_locus}"
+    if group_name in f:
+        del f[group_name]
+    group = f.create_group(group_name)
 
     sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
     sparse_mat.setdiag(0)
@@ -85,7 +91,7 @@ def convert_h5(
     sparse_mat = adjust_to_zero(sparse_mat, precision)
 
     pos_df = metadata_to_df(base_infile + ".gz")
-    group.require_dataset(
+    group.create_dataset(
         POSITION_DATASET,
         data=pos_df,
         compression="gzip",
@@ -93,7 +99,7 @@ def convert_h5(
         dtype=pos_df.dtypes[0],
     )
     names = pos_df.index.to_numpy().astype("S")
-    group.require_dataset(
+    group.create_dataset(
         NAME_DATASET,
         data=names,
         shape=names.shape,
@@ -117,7 +123,7 @@ def convert_h5(
     lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
     sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
     dense = sparse_mat.todense()
-    group.require_dataset(
+    group.create_dataset(
         LD_DATASET,
         data=dense,
         compression="gzip",
@@ -203,13 +209,13 @@ def metadata_to_df(gz_file):
 
 def convert_maf_h5(infile, outfile):
     f = h5py.File(outfile, "a")
-    group = f.require_group("aux")
+    group = f.require_group(AUX_GROUP)
 
     maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
     maf = maf.sort_values("MAF")
     maf = maf[["Position", "MAF"]].to_numpy()
-    group.require_dataset(
-        "MAF", data=maf, shape=maf.shape, dtype=maf.dtype, compression="gzip"
+    group.create_dataset(
+        MAF_DATASET, data=maf, shape=maf.shape, dtype=maf.dtype, compression="gzip"
     )
 
 
@@ -450,7 +456,7 @@ def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
 
 def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
     indices = get_maf_indices_by_range(
-        chromosome_group["aux"]["MAF"], lower_bound, upper_bound
+        chromosome_group[AUX_GROUP][MAF_DATASET], lower_bound, upper_bound
     )
     print(f"Found {len(indices)} matching MAFs")
     maf_result = get_submatrix_from_chromosome(

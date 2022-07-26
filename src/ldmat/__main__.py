@@ -525,8 +525,11 @@ def output_wrapper(function):
 
 
 @click.group()
-def cli():
-    pass
+@click.option("--debug", is_flag=True, default=False)
+def cli(debug):
+    if debug:
+        click.echo("Debug mode is on")
+        logging.basicConfig(level=logging.DEBUG)
 
 
 @cli.command()

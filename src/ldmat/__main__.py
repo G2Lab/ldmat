@@ -60,7 +60,7 @@ def adjust_to_zero(sparse_matrix, precision):
 def convert_h5(
     infile,
     outfile,
-    precision=0,
+    precision=None,
     decimals=None,
     start_locus=None,
     end_locus=None,
@@ -110,8 +110,8 @@ def convert_h5(
 
     group.attrs[START_ATTR] = start_locus
     group.attrs[END_ATTR] = end_locus
-    group.attrs[PREC_ATTR] = precision
-    group.attrs[DEC_ATTR] = decimals
+    group.attrs[PREC_ATTR] = precision or np.nan
+    group.attrs[DEC_ATTR] = decimals or np.nan
 
     pos_df["relative_pos"] = np.arange(len(pos_df))
     # actually should not filter, since need for rows. instead save start and end loci for columns
@@ -177,7 +177,7 @@ def convert_full_chromosome_h5(
             )
             first_missing_locus = next_covered_locus
 
-            logging.info("{:.2f}% complete".format(((i + 1) * 100) / len(filtered)))
+            logging.info("{:.0f}% complete".format(((i + 1) * 100) / len(filtered)))
 
 
 def metadata_to_df(gz_file):
@@ -463,7 +463,6 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
     maf_result = get_submatrix_from_chromosome(
         chromosome_group, indices, indices, range_query=False
     )
-    assert all(np.diagonal(maf_result) == 1)
     return maf_result
 
 
@@ -543,7 +542,7 @@ def cli(log_level):
 @cli.command()
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
-@click.option("--precision", "-p", type=float, default=0)
+@click.option("--precision", "-p", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=None)
 @click.option("--end-locus", "-e", type=int, default=None)
@@ -555,7 +554,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.argument("directory", type=click.Path())
 @click.argument("chromosome", type=int)
 @click.argument("outfile", type=click.Path(exists=False))
-@click.option("--precision", "-p", type=float, default=0)
+@click.option("--precision", "-p", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
 def convert_chromosome(

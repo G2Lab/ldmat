@@ -580,12 +580,10 @@ def convert_maf(infile, outfile):
 @click.option("--i-end", type=int)
 @click.option("--j-start", type=int)
 @click.option("--j-end", type=int)
-@click.option("--symmetric", "-s", is_flag=True, default=False)
 @output_wrapper
-def submatrix(ld_file, i_start, i_end, j_start, j_end, symmetric, outfile, plot):
-    if symmetric and (j_start is not None or j_end is not None):
-        raise ValueError("Symmetric flag only compatible with i indexing.")
-    if symmetric:
+def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
+    if j_start is None or j_end is None:
+        logging.warning("Assuming symmetric matrix")
         j_start, j_end = i_start, i_end
     return get_submatrix_from_chromosome(
         h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
@@ -596,9 +594,8 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, symmetric, outfile, plot)
 @click.argument("ld-file")
 @click.option("--row-list", "-r")
 @click.option("--col-list", "-c")
-@click.option("--symmetric", "-s", is_flag=True, default=False)
 @output_wrapper
-def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
+def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
     """
     Works with CSVs of the form:
     chr21:9411245
@@ -606,9 +603,6 @@ def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
     chr21:9411485
     ...
     """
-
-    if symmetric and col_list is not None:
-        raise ValueError("Symmetric flag only compatible with row indexing.")
 
     i_list = (
         pd.read_csv(row_list, header=None)
@@ -618,7 +612,9 @@ def submatrix_by_list(ld_file, row_list, col_list, symmetric, outfile, plot):
         .astype(int)
         .to_numpy()
     )
-    if symmetric:
+
+    if col_list is None:
+        logging.warning("Assuming symmetric matrix")
         j_list = i_list
     else:
         j_list = (

@@ -510,7 +510,7 @@ def validate_version(f):
 def handle_output(res, outfile, plot):
     if outfile:
         if outfile.endswith(".npz"):
-            sparse.save_npz(outfile, sparse.tril(res))
+            sparse.save_npz(outfile, sparse.coo_matrix(res))
         else:
             res.to_csv(outfile)
     else:

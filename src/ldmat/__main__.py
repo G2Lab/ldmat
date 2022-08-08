@@ -86,7 +86,7 @@ def convert_h5(
         del f[group_name]
     group = f.create_group(group_name)
 
-    sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
+    sparse_mat = sparse.tril(sparse.load_npz(base_infile + ".npz"), format="csr").T
     sparse_mat.setdiag(0)
     if decimals:
         sparse_mat.data = np.round(sparse_mat.data, decimals)
@@ -507,17 +507,46 @@ def validate_version(f):
 # -----------------------------------------------------------
 
 
-def handle_output(res, outfile, plot):
+def find_diagonal(df):
+    intersection = df.index.intersection(df.columns)
+    if len(intersection):
+        ind_start = df.index.get_loc(intersection[0])
+        ind_end = df.index.get_loc(intersection[-1])
+        col_start = df.columns.get_loc(intersection[0])
+        col_end = df.columns.get_loc(intersection[-1])
+        if (ind_start == 0 or col_start == 0) and (
+            ind_end + 1 == len(df.index) or col_end + 1 == len(df.columns)
+        ):
+            if ind_start == 0:
+                return col_start
+            else:
+                return -ind_start
+
+    return None
+
+
+def handle_output(df, outfile, plot, triangular):
     if outfile:
         if outfile.endswith(".npz"):
-            sparse.save_npz(outfile, sparse.tril(res))
+            if triangular:
+                diagonal = find_diagonal(df)
+                if diagonal is None:
+                    logging.warning(
+                        "The matrix has no continuous diagonal. NOT RETURNING A TRIANGULAR MATRIX."
+                    )
+                    sparse_mat = sparse.coo_matrix(df)
+                else:
+                    sparse_mat = sparse.tril(df, diagonal)
+            else:
+                sparse_mat = sparse.coo_matrix(df)
+            sparse.save_npz(outfile, sparse_mat)
         else:
-            res.to_csv(outfile)
+            df.to_csv(outfile)
     else:
-        print(res)
+        print(df)
 
     if plot:
-        plot_heatmap(res, outfile)
+        plot_heatmap(df, outfile)
 
 
 def output_wrapper(function):

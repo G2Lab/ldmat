@@ -585,15 +585,18 @@ def convert_maf(infile, outfile):
 
 @cli.command()
 @click.argument("ld-file")
-@click.option("--i-start", type=int)
-@click.option("--i-end", type=int)
+@click.option("--i-start", type=int, required=True)
+@click.option("--i-end", type=int, required=True)
 @click.option("--j-start", type=int)
 @click.option("--j-end", type=int)
 @output_wrapper
 def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
-    if j_start is None or j_end is None:
-        logging.warning("Assuming symmetric matrix")
-        j_start, j_end = i_start, i_end
+    if j_start is None:
+        logging.warning("Assuming symmetric start positions")
+        j_start = i_start
+    if j_end is None:
+        logging.warning("Assuming symmetric end positions")
+        j_end = i_end
     return get_submatrix_from_chromosome(
         h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
     )
@@ -601,7 +604,7 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
 
 @cli.command()
 @click.argument("ld-file")
-@click.option("--row-list", "-r")
+@click.option("--row-list", "-r", required=True)
 @click.option("--col-list", "-c")
 @output_wrapper
 def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):

@@ -86,7 +86,7 @@ def convert_h5(
         del f[group_name]
     group = f.create_group(group_name)
 
-    sparse_mat = sparse.triu(sparse.load_npz(base_infile + ".npz").T, format="csr")
+    sparse_mat = sparse.tril(sparse.load_npz(base_infile + ".npz"), format="csr").T
     sparse_mat.setdiag(0)
     if decimals:
         sparse_mat.data = np.round(sparse_mat.data, decimals)

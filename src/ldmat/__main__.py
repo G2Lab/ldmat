@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import click
 from functools import wraps
 import logging
+import time
 
 
 VERSION = "0.0.1"
@@ -373,6 +374,8 @@ def unique_merge(v):  # https://stackoverflow.com/a/59361748
 
 
 def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_query):
+    start_time = time.time()
+
     validate_version(chromosome_group)
 
     if not range_query:
@@ -438,6 +441,10 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
 
     if df is None:
         df = pd.DataFrame()
+
+    logging.debug(
+        "Constructing matrix took {:.0f} seconds.".format(time.time() - start_time)
+    )
     return df
 
 
@@ -502,8 +509,10 @@ def validate_version(f):
 
 def handle_output(res, outfile, plot):
     if outfile:
-        # name index?
-        res.to_csv(outfile)
+        if outfile.endswith(".npz"):
+            sparse.save_npz(outfile, sparse.tril(res))
+        else:
+            res.to_csv(outfile)
     else:
         print(res)
 

@@ -565,7 +565,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, default=None)
-@click.option("--locus-regex", "-r", type=str, default="_(\d+)_")
+@click.option("--locus-regex", "-r", type=str, default="_(\d+)_", show_default=True)
 def convert_chromosome(
     filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
 ):

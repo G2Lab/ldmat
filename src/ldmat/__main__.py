@@ -1,17 +1,18 @@
-import numpy as np
-import scipy.sparse as sparse
-import os
-import pandas as pd
-import h5py
-from heapq import merge
-import seaborn as sns
-import matplotlib.pyplot as plt
-import click
-from functools import wraps
-import logging
-import time
-import re
 import glob
+import logging
+import os
+import re
+import time
+from functools import wraps
+from heapq import merge
+
+import click
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy.sparse as sparse
+import seaborn as sns
 
 VERSION = "0.0.1"
 

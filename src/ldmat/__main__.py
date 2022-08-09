@@ -14,11 +14,11 @@ import pandas as pd
 import scipy.sparse as sparse
 import seaborn as sns
 
-VERSION = "0.0.1"
+VERSION = "0.0.2"
 
 DIAGONAL_LD = 1
 
-LD_DATASET = "LD_scores"
+LD_DATASET = "LD_values"
 POSITION_DATASET = "positions"
 NAME_DATASET = "names"
 CHUNK_PREFIX = "chunk"
@@ -83,6 +83,9 @@ def convert_h5(
         f.attrs[VERSION_ATTR] = VERSION
     validate_version(f)
 
+    f.attrs[PREC_ATTR] = precision or np.nan
+    f.attrs[DEC_ATTR] = decimals or np.nan
+
     group_name = f"{CHUNK_PREFIX}_{start_locus}"
     if group_name in f:
         del f[group_name]
@@ -113,8 +116,6 @@ def convert_h5(
 
     group.attrs[START_ATTR] = start_locus
     group.attrs[END_ATTR] = end_locus
-    group.attrs[PREC_ATTR] = precision or np.nan
-    group.attrs[DEC_ATTR] = decimals or np.nan
 
     pos_df["relative_pos"] = np.arange(len(pos_df))
     # actually should not filter, since need for rows. instead save start and end loci for columns

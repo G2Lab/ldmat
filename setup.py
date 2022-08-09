@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="ldmat",
-    version="0.1.2",
+    version="0.1.0",
     author="Rockwell Weiner",
     author_email="rockwellw@gmail.com",
     description=("Efficient Storage and Querying of Linkage Disequilibrium Matrices"),
@@ -23,5 +23,15 @@ setup(
         "scipy>=1.8.1",
         "seaborn>=0.11.2",
     ],
-    include_package_data=True,
+    data_files=[
+        (
+            "ldmat/examples",
+            [
+                "examples/chr21_partial.h5",
+                "examples/query_result_maf.npz",
+                "examples/query_result.csv",
+                "examples/query_result.npz",
+            ],
+        )
+    ],
 )

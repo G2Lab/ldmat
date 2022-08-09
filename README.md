@@ -22,7 +22,7 @@ ldmat submatrix YOUR_VENV_DIRECTORY/ldmat/examples/chr21_partial.h5 \
 --i-start 14300001 --i-end 14400001
 ```
 This will simply print the results as a Pandas DataFrame, so you'll probably want
-to save the results by adding an output file, like: `ld submatrix ... -o YOUR_OUTPUT.csv`
+to save the results by adding an output file, like: `ldmat submatrix ... -o YOUR_OUTPUT.csv`
 
 To see all the commands available, run `ldmat`.
 

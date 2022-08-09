@@ -10,7 +10,8 @@ import click
 from functools import wraps
 import logging
 import time
-
+import re
+import glob
 
 VERSION = "0.0.1"
 
@@ -140,36 +141,32 @@ def convert_h5(
 
 
 def convert_full_chromosome_h5(
-    directory, chromosome, outfile, precision, decimals, start_locus
+    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
 ):
     f = h5py.File(outfile, "a")
 
     f.attrs[CHROMOSOME_ATTR] = chromosome
 
-    filtered = []
-    for file in os.listdir(directory):
-        if (
-            os.path.isfile(os.path.join(directory, file))
-            and file.startswith(f"chr{chromosome}_")
-            and file.endswith(".npz")
-        ):
-            filtered.append((file, int(file.split("_")[1])))
+    files = [
+        (file, int(re.search(locus_regex, os.path.basename(file)).group(1)))
+        for file in glob.glob(filepath)
+    ]
 
-    filtered.sort(key=lambda x: x[1])
+    files.sort(key=lambda x: x[1])
 
-    start_locus = max(start_locus, filtered[0][1])
+    start_locus = max(start_locus, files[0][1])
 
     first_missing_locus = start_locus
 
-    for i, (file, locus) in enumerate(filtered):
+    for i, (file, locus) in enumerate(files):
         if locus >= start_locus:
             logging.debug(f"Converting {file}")
-            if i + 1 < len(filtered):
-                next_covered_locus = filtered[i + 1][1]
+            if i + 1 < len(files):
+                next_covered_locus = files[i + 1][1]
             else:
                 next_covered_locus = np.inf
             convert_h5(
-                os.path.join(directory, file),
+                file,
                 outfile,
                 precision,
                 decimals,
@@ -178,7 +175,7 @@ def convert_full_chromosome_h5(
             )
             first_missing_locus = next_covered_locus
 
-            logging.info("{:.0f}% complete".format(((i + 1) * 100) / len(filtered)))
+            logging.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
 
 
 def metadata_to_df(gz_file):
@@ -539,7 +536,8 @@ def output_wrapper(function):
     type=click.Choice(["warning", "info", "debug"], case_sensitive=False),
 )
 def cli(log_level):
-    click.echo(f"Log level: {log_level}")
+    if log_level is not None:
+        click.echo(f"Log level: {log_level}")
     if log_level == "warning":
         logging.basicConfig(level=logging.WARNING)
     elif log_level == "info":
@@ -560,19 +558,20 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 
 
 @cli.command()
-@click.argument("directory", type=click.Path())
-@click.argument("chromosome", type=int)
+@click.argument("filepath", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
+@click.option("--chromosome", "-c", type=int, default=None)
+@click.option("--locus-regex", "-r", type=str, default="_(\d+)_")
 def convert_chromosome(
-    directory, chromosome, outfile, precision, decimals, start_locus
+    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
 ):
     logging.debug(f"Converting chromosome {chromosome}")
 
     convert_full_chromosome_h5(
-        directory, chromosome, outfile, precision, decimals, start_locus
+        filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
     )
 
 

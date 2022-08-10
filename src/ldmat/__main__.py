@@ -121,22 +121,21 @@ def convert_h5(
     # actually should not filter, since need for rows. instead save start and end loci for columns
     pos_df = pos_df[pos_df.BP.between(start_locus, end_locus)]
 
-    if len(pos_df) == 0:
+    if len(pos_df):
+        lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
+        sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
+        dense = sparse_mat.todense()
+        group.create_dataset(
+            LD_DATASET,
+            data=dense,
+            compression="gzip",
+            compression_opts=9,
+            shape=dense.shape,
+            dtype=dense.dtype,
+            scaleoffset=decimals,
+        )
+    else:
         logging.warning(f"No data found between loci {start_locus} and {end_locus}")
-        return None
-
-    lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
-    sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
-    dense = sparse_mat.todense()
-    group.create_dataset(
-        LD_DATASET,
-        data=dense,
-        compression="gzip",
-        compression_opts=9,
-        shape=dense.shape,
-        dtype=dense.dtype,
-        scaleoffset=decimals,
-    )
 
     f.attrs[START_ATTR] = min(f.attrs.get(START_ATTR, start_locus), start_locus)
     f.attrs[END_ATTR] = max(f.attrs.get(END_ATTR, end_locus), end_locus)

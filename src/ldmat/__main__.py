@@ -150,7 +150,7 @@ def convert_full_chromosome_h5(
     f.attrs[CHROMOSOME_ATTR] = chromosome
 
     files = [
-        (file, int(re.search(locus_regex, os.path.basename(file)).group(1)))
+        (file, *map(int, re.findall(locus_regex, os.path.basename(file))))
         for file in glob.glob(filepath)
     ]
 
@@ -160,13 +160,12 @@ def convert_full_chromosome_h5(
 
     first_missing_locus = start_locus
 
-    for i, (file, locus) in enumerate(files):
-        if locus >= start_locus:
-            logging.debug(f"Converting {file}")
+    for i, (file, local_start_locus, local_end_locus) in enumerate(files):
+        if local_start_locus >= start_locus:
             if i + 1 < len(files):
                 next_covered_locus = files[i + 1][1]
             else:
-                next_covered_locus = np.inf
+                next_covered_locus = local_end_locus
             convert_h5(
                 file,
                 outfile,
@@ -565,8 +564,8 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.option("--precision", "-p", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
-@click.option("--chromosome", "-c", type=int, default=None)
-@click.option("--locus-regex", "-r", type=str, default="_(\d+)_", show_default=True)
+@click.option("--chromosome", "-c", type=int, required=True)
+@click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
 def convert_chromosome(
     filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
 ):

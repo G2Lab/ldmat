@@ -255,10 +255,13 @@ def add_slice_to_df(df, new_slice):
         ]
 
         right_slice = new_slice.loc[row_start:row_end, col_end:].iloc[1:, 1:]
-        df = pd.concat((df, right_slice), axis=1)
+        if not right_slice.empty:
+            df = pd.concat((df, right_slice), axis=1)
 
         bottom_slice = new_slice.loc[row_end:, col_start:].iloc[1:, 1:]
-        return pd.concat((df, bottom_slice), axis=0)
+        if not bottom_slice.empty:
+            df = pd.concat((df, bottom_slice), axis=0)
+        return df
 
     elif row_start:
         return pd.concat((df, new_slice), axis=1)
@@ -394,7 +397,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
                 main_slice = subselect(main_slice, i_overlap, j_overlap, range_query)
                 df = add_slice_to_df(df, main_slice)
 
-            # right slice - all i in overlap, all j > interval end
+        # right slice - all i in overlap, all j > interval end
         if i_overlap and j_values[-1] > interval[1]:
             right_slice = get_horizontal_slice(
                 group,

@@ -517,11 +517,11 @@ def cli(log_level):
     if log_level is not None:
         click.echo(f"Log level: {log_level}")
     if log_level == "warning":
-        logger.setLevel(logging.WARNING)
+        logging.basicConfig(level=logging.WARNING, format="%(message)s")
     elif log_level == "info":
-        logger.setLevel(logging.INFO)
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
     elif log_level == "debug":
-        logger.setLevel(logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG, format="%(message)s")
 
 
 @cli.command()

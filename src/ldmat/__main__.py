@@ -43,6 +43,8 @@ MAF_COLS = [
 ]
 MAF_DATASET = "MAF"
 
+logger = logging.getLogger()
+
 # -----------------------------------------------------------
 # CONVERSION FUNCTIONS
 # -----------------------------------------------------------
@@ -75,7 +77,7 @@ def convert_h5(
         chromosome, start_locus, end_locus = filename.split("_")
         start_locus, end_locus = int(start_locus), int(end_locus)
 
-    logging.debug(f"Converting {infile} loci {start_locus} to {end_locus}")
+    logger.debug(f"Converting {infile} loci {start_locus} to {end_locus}")
 
     f = h5py.File(outfile, "a")
 
@@ -135,7 +137,7 @@ def convert_h5(
             scaleoffset=decimals,
         )
     else:
-        logging.warning(f"No data found between loci {start_locus} and {end_locus}")
+        logger.warning(f"No data found between loci {start_locus} and {end_locus}")
 
     f.attrs[START_ATTR] = min(f.attrs.get(START_ATTR, start_locus), start_locus)
     f.attrs[END_ATTR] = max(f.attrs.get(END_ATTR, end_locus), end_locus)
@@ -175,7 +177,7 @@ def convert_full_chromosome_h5(
             )
             first_missing_locus = next_covered_locus
 
-            logging.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
+            logger.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
 
 
 def metadata_to_df(gz_file):
@@ -415,7 +417,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
     if df is None:
         df = pd.DataFrame()
 
-    logging.debug(
+    logger.debug(
         "Constructing matrix took {:.0f} seconds.".format(time.time() - start_time)
     )
     return df
@@ -439,7 +441,7 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
     indices = get_maf_indices_by_range(
         chromosome_group[AUX_GROUP][MAF_DATASET], lower_bound, upper_bound
     )
-    logging.debug(f"Found {len(indices)} matching MAFs")
+    logger.debug(f"Found {len(indices)} matching MAFs")
     maf_result = get_submatrix_from_chromosome(
         chromosome_group, indices, indices, range_query=False
     )
@@ -452,7 +454,7 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
 
 
 def plot_heatmap(df, outfile):
-    logging.info("Plotting...")
+    logger.info("Plotting...")
     figsize = (33, 27) if outfile else (11, 9)
     f, ax = plt.subplots(figsize=figsize)
     sns.heatmap(df, vmin=0, vmax=1, center=0)
@@ -515,11 +517,11 @@ def cli(log_level):
     if log_level is not None:
         click.echo(f"Log level: {log_level}")
     if log_level == "warning":
-        logging.basicConfig(level=logging.WARNING)
+        logger.setLevel(logging.WARNING)
     elif log_level == "info":
-        logging.basicConfig(level=logging.INFO)
+        logger.setLevel(logging.INFO)
     elif log_level == "debug":
-        logging.basicConfig(level=logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
 
 
 @cli.command()
@@ -544,7 +546,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 def convert_chromosome(
     filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
 ):
-    logging.debug(f"Converting chromosome {chromosome}")
+    logger.debug(f"Converting chromosome {chromosome}")
 
     convert_full_chromosome_h5(
         filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
@@ -567,10 +569,10 @@ def convert_maf(infile, outfile):
 @output_wrapper
 def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
     if j_start is None:
-        logging.warning("Assuming symmetric start positions")
+        logger.warning("Assuming symmetric start positions")
         j_start = i_start
     if j_end is None:
-        logging.warning("Assuming symmetric end positions")
+        logger.warning("Assuming symmetric end positions")
         j_end = i_end
     return get_submatrix_from_chromosome(
         h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
@@ -601,7 +603,7 @@ def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
     )
 
     if col_list is None:
-        logging.warning("Assuming symmetric matrix")
+        logger.warning("Assuming symmetric matrix")
         j_list = i_list
     else:
         j_list = (

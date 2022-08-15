@@ -266,30 +266,6 @@ def add_slice_to_df(df, new_slice):
         return pd.concat((df, new_slice))
 
 
-def add_main_slice_to_df(df, main_slice):
-    if df is None:
-        return main_slice
-    if main_slice.index[0] not in df.index:
-        return pd.concat((df, main_slice), axis=0)
-
-    if main_slice.index[-1] in df.index:
-        # everything is normal
-        df.loc[
-            main_slice.index[0] : main_slice.index[-1],
-            main_slice.columns[0] : main_slice.columns[-1],
-        ] = main_slice
-    else:
-        # main slice goes too far
-        df.loc[main_slice.index[0] :, main_slice.columns[0] :] = main_slice.loc[
-            : df.index[-1], : df.index[-1]
-        ]
-        df = pd.concat(
-            (df, main_slice.loc[df.index[-1] :, df.index[-1] :].iloc[1:, 1:]), axis=0
-        )
-
-    return df
-
-
 def subselect(df, rows, columns, range_query):
     BP_list = df[[]].copy()
     BP_list["BP"] = df.index.str.split(".").str[1].astype(int)

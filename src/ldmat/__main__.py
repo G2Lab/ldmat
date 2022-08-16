@@ -146,7 +146,18 @@ class TSVLoader(CSVLoader):
     DELIMITER = "\t"
 
 
-LOADER_FRIENDLY_NAMES = {cls.FRIENDLY_NAME: cls for cls in Loader.__subclasses__()}
+# https://stackoverflow.com/questions/3862310/how-to-find-all-the-subclasses-of-a-class-given-its-name
+def get_all_subclasses(cls):
+    all_subclasses = []
+
+    for subclass in cls.__subclasses__():
+        all_subclasses.append(subclass)
+        all_subclasses.extend(get_all_subclasses(subclass))
+
+    return all_subclasses
+
+
+LOADER_FRIENDLY_NAMES = {cls.FRIENDLY_NAME: cls for cls in get_all_subclasses(Loader)}
 
 # -----------------------------------------------------------
 # CONVERSION FUNCTIONS
@@ -665,6 +676,17 @@ def output_wrapper(function):
     return wrapper
 
 
+def convert_options(function):
+    function = click.option(
+        "--loader",
+        "-l",
+        type=click.Choice(LOADER_FRIENDLY_NAMES.keys()),
+        default=BroadInstituteLoader.FRIENDLY_NAME,
+        callback=lambda ctx, param, value: LOADER_FRIENDLY_NAMES[value],
+    )(function)
+    return function
+
+
 @click.group()
 @click.option(
     "--log-level",
@@ -689,8 +711,9 @@ def cli(log_level):
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, required=True)
 @click.option("--end-locus", "-e", type=int, required=True)
-def convert(infile, outfile, precision, decimals, start_locus, end_locus):
-    convert_h5(infile, outfile, start_locus, end_locus, precision, decimals)
+@convert_options
+def convert(infile, outfile, precision, decimals, start_locus, end_locus, loader):
+    convert_h5(infile, outfile, start_locus, end_locus, precision, decimals, loader)
 
 
 @cli.command()
@@ -701,12 +724,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, required=True)
 @click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
-@click.option(
-    "--loader",
-    "-l",
-    type=click.Choice(LOADER_FRIENDLY_NAMES.keys()),
-    default=BroadInstituteLoader.FRIENDLY_NAME,
-)
+@convert_options
 def convert_chromosome(
     filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex, loader
 ):
@@ -720,15 +738,16 @@ def convert_chromosome(
         start_locus,
         chromosome,
         locus_regex,
-        LOADER_FRIENDLY_NAMES[loader],
+        loader,
     )
 
 
 @cli.command()
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
-def convert_maf(infile, outfile):
-    convert_maf_h5(infile, outfile)
+@convert_options
+def convert_maf(infile, outfile, loader):
+    convert_maf_h5(infile, outfile, loader)
 
 
 @cli.command()

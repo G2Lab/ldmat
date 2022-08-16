@@ -2,6 +2,7 @@ import glob
 import logging
 import os
 import re
+import shutil
 import time
 from functools import wraps
 from heapq import merge
@@ -487,7 +488,7 @@ def get_submatrix_from_chromosome(
         df.reindex(columns=skeleton_columns, copy=False).to_csv(
             TMP_OUT, mode="a", header=False
         )
-        df = pd.read_csv(TMP_OUT, index_col=0)
+        df = TMP_OUT
 
     logger.debug(
         "Constructing matrix took {:.0f} seconds.".format(time.time() - start_time)
@@ -509,15 +510,14 @@ def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
     return maf_dataset[start_index:end_index, 0]
 
 
-def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
+def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound, stream=None):
     indices = get_maf_indices_by_range(
         chromosome_group[AUX_GROUP][MAF_DATASET], lower_bound, upper_bound
     )
     logger.debug(f"Found {len(indices)} matching MAFs")
-    maf_result = get_submatrix_from_chromosome(
-        chromosome_group, indices, indices, range_query=False
+    return get_submatrix_from_chromosome(
+        chromosome_group, indices, indices, range_query=False, stream=stream
     )
-    return maf_result
 
 
 # -----------------------------------------------------------
@@ -555,10 +555,21 @@ def validate_version(f):
 
 
 def handle_output(res, outfile, plot):
+    if type(res) == str:
+        if outfile and outfile.endswith(".csv") and not plot:
+            # special handling for streaming a csv and nothing else
+            shutil.copyfile(res, outfile)
+            return
+        else:
+            res = pd.read_csv(res, index_col=0)
     if outfile:
         if outfile.endswith(".npz"):
             sparse.save_npz(outfile, sparse.coo_matrix(res))
         else:
+            if not outfile.endswith(".csv"):
+                logger.warning(
+                    "Output file extension not understood, outputting as CSV."
+                )
             res.to_csv(outfile)
     else:
         print(res)
@@ -660,8 +671,9 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, stream, outfile, plot):
 @click.argument("ld-file")
 @click.option("--row-list", "-r", required=True)
 @click.option("--col-list", "-c")
+@click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
-def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
+def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
     """
     Works with CSVs of the form:
     chr21:9411245
@@ -693,7 +705,7 @@ def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
         )
 
     return get_submatrix_from_chromosome(
-        h5py.File(ld_file, "r"), i_list, j_list, range_query=False
+        h5py.File(ld_file, "r"), i_list, j_list, range_query=False, stream=stream
     )
 
 
@@ -701,9 +713,12 @@ def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
 @click.argument("ld-file")
 @click.option("--lower-bound", "-l", type=float, default=0)
 @click.option("--upper-bound", "-u", type=float, default=0.5)
+@click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
-def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile, plot):
-    return get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
+def submatrix_by_maf(ld_file, lower_bound, upper_bound, stream, outfile, plot):
+    return get_submatrix_by_maf_range(
+        h5py.File(ld_file, "r"), lower_bound, upper_bound, stream
+    )
 
 
 if __name__ == "__main__":

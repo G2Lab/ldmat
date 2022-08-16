@@ -556,12 +556,14 @@ def validate_version(f):
 
 def handle_output(res, outfile, plot):
     if type(res) == str:
+        filepath = res
         if outfile and outfile.endswith(".csv") and not plot:
             # special handling for streaming a csv and nothing else
-            shutil.copyfile(res, outfile)
+            shutil.move(filepath, outfile)
             return
         else:
-            res = pd.read_csv(res, index_col=0)
+            res = pd.read_csv(filepath, index_col=0)
+            os.remove(filepath)
     if outfile:
         if outfile.endswith(".npz"):
             sparse.save_npz(outfile, sparse.coo_matrix(res))

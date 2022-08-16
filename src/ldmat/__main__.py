@@ -47,7 +47,7 @@ MAF_DATASET = "MAF"
 
 TMP_OUT = f"/tmp/ldmat_{uuid4().hex}.csv"
 
-STREAM_THRESHOLD = 1e13
+STREAM_THRESHOLD = 1e12
 
 logger = logging.getLogger()
 
@@ -504,7 +504,7 @@ def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
         start_index -= 1
 
     end_index = np.searchsorted(maf_values, upper_bound)
-    while end_index < len(maf_values) and maf_values[end_index + 1] <= upper_bound:
+    while end_index < len(maf_values) and maf_values[end_index] <= upper_bound:
         end_index += 1
 
     return maf_dataset[start_index:end_index, 0]

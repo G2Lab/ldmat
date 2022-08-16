@@ -46,17 +46,38 @@ logger = logging.getLogger()
 
 
 class Loader:
+    FRIENDLY_NAME = None
+
     def load_as_sparse_matrix(self, f):
-        pass
+        """
+        Should return a scipy.sparse matrix, which is:
+            - square
+            - upper triangular
+            - 0 along the diagonal
+            - CSC format
+        """
+        raise NotImplementedError
 
     def load_metadata(self, f):
-        pass
+        """
+        Should return a Pandas Dataframe, where:
+            - the index contains friendly names for all positions
+            - the column "BP" contains the position in the chromosome
+            - there are no other columns
+        """
+        raise NotImplementedError
 
     def load_maf(self, f):
-        pass
+        """
+        Should return a Pandas Dataframe, where:
+            - the column "Position" contains the position in the chromosome
+            - the column "MAF" contains the MAF value for each position
+        """
+        raise NotImplementedError
 
 
 class BroadInstituteLoader(Loader):
+    FRIENDLY_NAME = "broad-institute"
     MAF_COLS = [
         "Alternate_id",
         "RS_id",
@@ -103,6 +124,29 @@ class BroadInstituteLoader(Loader):
     def load_maf(self, f):
         return pd.read_csv(f, sep="\t", header=None, names=self.MAF_COLS)
 
+
+class CSVLoader(Loader):
+    FRIENDLY_NAME = "csv"
+    DELIMITER = ","
+
+    def load_as_sparse_matrix(self, f):
+        df = pd.read_csv(f, index_col=0, sep=self.DELIMITER).fillna(0)
+        sparse_mat = sparse.triu(sparse.csc_matrix(df))
+        sparse_mat.setdiag(0)
+        return sparse_mat
+
+    def load_metadata(self, f):
+        df = pd.read_csv(f, nrows=0, index_col=0, set=self.DELIMITER).T
+        df["BP"] = df.index.str.split(".").str[1].astype(int)
+        return df
+
+
+class TSVLoader(CSVLoader):
+    FRIENDLY_NAME = "tsv"
+    DELIMITER = "\t"
+
+
+LOADER_FRIENDLY_NAMES = {cls.FRIENDLY_NAME: cls for cls in Loader.__subclasses__()}
 
 # -----------------------------------------------------------
 # CONVERSION FUNCTIONS
@@ -197,7 +241,14 @@ def convert_h5(
 
 
 def convert_full_chromosome_h5(
-    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
+    filepath,
+    outfile,
+    precision,
+    decimals,
+    start_locus,
+    chromosome,
+    locus_regex,
+    loader_class=BroadInstituteLoader,
 ):
     f = h5py.File(outfile, "a")
 
@@ -227,6 +278,7 @@ def convert_full_chromosome_h5(
                 next_covered_locus,
                 precision,
                 decimals,
+                loader_class=loader_class,
             )
             first_missing_locus = next_covered_locus
 
@@ -649,13 +701,26 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, required=True)
 @click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
+@click.option(
+    "--loader",
+    "-l",
+    type=click.Choice(LOADER_FRIENDLY_NAMES.keys()),
+    default=BroadInstituteLoader.FRIENDLY_NAME,
+)
 def convert_chromosome(
-    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
+    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex, loader
 ):
     logger.debug(f"Converting chromosome {chromosome}")
 
     convert_full_chromosome_h5(
-        filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
+        filepath,
+        outfile,
+        precision,
+        decimals,
+        start_locus,
+        chromosome,
+        locus_regex,
+        LOADER_FRIENDLY_NAMES[loader],
     )
 
 

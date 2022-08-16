@@ -2,9 +2,11 @@ import glob
 import logging
 import os
 import re
+import shutil
 import time
 from functools import wraps
 from heapq import merge
+from uuid import uuid4
 
 import click
 import h5py
@@ -42,6 +44,10 @@ MAF_COLS = [
     "Info Score",
 ]
 MAF_DATASET = "MAF"
+
+TMP_OUT = f"/tmp/ldmat_{uuid4().hex}.csv"
+
+STREAM_THRESHOLD = 1e13
 
 logger = logging.getLogger()
 
@@ -351,7 +357,9 @@ def unique_merge(v):  # https://stackoverflow.com/a/59361748
             yield a
 
 
-def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_query):
+def get_submatrix_from_chromosome(
+    chromosome_group, i_values, j_values, range_query, stream=None
+):
     start_time = time.time()
 
     validate_version(chromosome_group)
@@ -374,6 +382,51 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
 
     intervals.sort(key=lambda x: x[0])
 
+    if stream is None:
+        if range_query:
+            stream = (i_values[1] - i_values[0]) * (
+                j_values[1] - j_values[0]
+            ) > STREAM_THRESHOLD
+        else:
+            stream = len(i_values) * len(j_values) > STREAM_THRESHOLD
+
+    if stream:
+        skeleton_columns = pd.Index(())
+        # find full set of columns
+        for interval in intervals:
+            i_overlap = overlap(i_values, interval, range_query)
+            j_overlap = overlap(j_values, interval, range_query)
+
+            group = chromosome_group[f"{CHUNK_PREFIX}_{interval[0]}"]
+            if i_overlap and j_overlap:
+                main_slice = get_horizontal_slice(
+                    group, (None, None), j_overlap, range_query
+                )
+                skeleton_columns = skeleton_columns.union(
+                    main_slice.columns, sort=False
+                )
+
+            if i_overlap and j_values[-1] > interval[1]:
+                right_slice = get_horizontal_slice(
+                    group,
+                    (None, None),
+                    overlap(j_values, (interval[1], np.inf), range_query),
+                    range_query,
+                )
+                skeleton_columns = skeleton_columns.union(
+                    right_slice.columns, sort=False
+                )
+
+            if j_overlap and i_values[-1] > interval[1]:
+                bottom_slice = get_horizontal_slice(
+                    group, j_overlap, (None, None), range_query
+                ).T
+                skeleton_columns = skeleton_columns.union(
+                    bottom_slice.columns, sort=False
+                )
+
+        pd.DataFrame(columns=skeleton_columns).to_csv(TMP_OUT)
+
     df = None
     for interval in intervals:
         # INTERVALS ARE ONLY FOR i VALUES!!!
@@ -383,6 +436,7 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
 
         group = chromosome_group[f"{CHUNK_PREFIX}_{interval[0]}"]
 
+        new_section_bottom = None
         # get right overlap, bottom overlap, triangle overlap
         if i_overlap and j_overlap:
             full_overlap = outer_overlap(i_overlap, j_overlap, range_query)
@@ -397,6 +451,8 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
                 main_slice = subselect(main_slice, i_overlap, j_overlap, range_query)
                 df = add_slice_to_df(df, main_slice)
 
+            new_section_bottom = len(main_slice.index)
+
         # right slice - all i in overlap, all j > interval end
         if i_overlap and j_values[-1] > interval[1]:
             right_slice = get_horizontal_slice(
@@ -407,6 +463,8 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
             )
             df = add_slice_to_df(df, right_slice)
 
+            new_section_bottom = len(right_slice.index)
+
         # bottom slice - all j in overlap, all i > interval end
         if j_overlap and i_values[-1] > interval[1]:
             bottom_slice = get_horizontal_slice(
@@ -416,9 +474,21 @@ def get_submatrix_from_chromosome(chromosome_group, i_values, j_values, range_qu
                 range_query,
             ).T
             df = add_slice_to_df(df, bottom_slice)
+        if stream and new_section_bottom:
+            write_section = df.iloc[:new_section_bottom]
+            df = df.iloc[new_section_bottom:]
+            write_section = write_section.reindex(columns=skeleton_columns, copy=False)
+            logger.debug(f"Writing interval {interval}, {len(write_section)} rows.")
+            write_section.to_csv(TMP_OUT, mode="a", header=False)
 
     if df is None:
         df = pd.DataFrame()
+
+    if stream:
+        df.reindex(columns=skeleton_columns, copy=False).to_csv(
+            TMP_OUT, mode="a", header=False
+        )
+        df = TMP_OUT
 
     logger.debug(
         "Constructing matrix took {:.0f} seconds.".format(time.time() - start_time)
@@ -440,15 +510,14 @@ def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
     return maf_dataset[start_index:end_index, 0]
 
 
-def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound):
+def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound, stream=None):
     indices = get_maf_indices_by_range(
         chromosome_group[AUX_GROUP][MAF_DATASET], lower_bound, upper_bound
     )
     logger.debug(f"Found {len(indices)} matching MAFs")
-    maf_result = get_submatrix_from_chromosome(
-        chromosome_group, indices, indices, range_query=False
+    return get_submatrix_from_chromosome(
+        chromosome_group, indices, indices, range_query=False, stream=stream
     )
-    return maf_result
 
 
 # -----------------------------------------------------------
@@ -486,10 +555,23 @@ def validate_version(f):
 
 
 def handle_output(res, outfile, plot):
+    if type(res) == str:
+        filepath = res
+        if outfile and outfile.endswith(".csv") and not plot:
+            # special handling for streaming a csv and nothing else
+            shutil.move(filepath, outfile)
+            return
+        else:
+            res = pd.read_csv(filepath, index_col=0)
+            os.remove(filepath)
     if outfile:
         if outfile.endswith(".npz"):
             sparse.save_npz(outfile, sparse.coo_matrix(res))
         else:
+            if not outfile.endswith(".csv"):
+                logger.warning(
+                    "Output file extension not understood, outputting as CSV."
+                )
             res.to_csv(outfile)
     else:
         print(res)
@@ -569,8 +651,9 @@ def convert_maf(infile, outfile):
 @click.option("--i-end", type=int, required=True)
 @click.option("--j-start", type=int)
 @click.option("--j-end", type=int)
+@click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
-def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
+def submatrix(ld_file, i_start, i_end, j_start, j_end, stream, outfile, plot):
     if j_start is None:
         logger.warning("Assuming symmetric start positions")
         j_start = i_start
@@ -578,7 +661,11 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
         logger.warning("Assuming symmetric end positions")
         j_end = i_end
     return get_submatrix_from_chromosome(
-        h5py.File(ld_file, "r"), (i_start, i_end), (j_start, j_end), range_query=True
+        h5py.File(ld_file, "r"),
+        (i_start, i_end),
+        (j_start, j_end),
+        range_query=True,
+        stream=stream,
     )
 
 
@@ -586,8 +673,9 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, outfile, plot):
 @click.argument("ld-file")
 @click.option("--row-list", "-r", required=True)
 @click.option("--col-list", "-c")
+@click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
-def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
+def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
     """
     Works with CSVs of the form:
     chr21:9411245
@@ -619,7 +707,7 @@ def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
         )
 
     return get_submatrix_from_chromosome(
-        h5py.File(ld_file, "r"), i_list, j_list, range_query=False
+        h5py.File(ld_file, "r"), i_list, j_list, range_query=False, stream=stream
     )
 
 
@@ -627,9 +715,12 @@ def submatrix_by_list(ld_file, row_list, col_list, outfile, plot):
 @click.argument("ld-file")
 @click.option("--lower-bound", "-l", type=float, default=0)
 @click.option("--upper-bound", "-u", type=float, default=0.5)
+@click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
-def submatrix_by_maf(ld_file, lower_bound, upper_bound, outfile, plot):
-    return get_submatrix_by_maf_range(h5py.File(ld_file, "r"), lower_bound, upper_bound)
+def submatrix_by_maf(ld_file, lower_bound, upper_bound, stream, outfile, plot):
+    return get_submatrix_by_maf_range(
+        h5py.File(ld_file, "r"), lower_bound, upper_bound, stream
+    )
 
 
 if __name__ == "__main__":

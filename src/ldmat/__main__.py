@@ -270,6 +270,13 @@ def convert_full_chromosome_h5(
         for file in glob.glob(filepath)
     ]
 
+    if any(len(file) != 3 for file in files):
+        raise ValueError(
+            f"""Failed to find start and end loci for at least one file!
+            This can usually be fixed by adjusting the locus regex (-r).
+            The current locus regex is: {locus_regex}"""
+        )
+
     files.sort(key=lambda x: x[1])
 
     start_locus = max(start_locus, files[0][1])

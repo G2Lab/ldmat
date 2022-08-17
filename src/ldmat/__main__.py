@@ -676,15 +676,14 @@ def output_wrapper(function):
     return wrapper
 
 
-def convert_options(function):
-    function = click.option(
+def loader_option(function):
+    return click.option(
         "--loader",
         "-l",
         type=click.Choice(LOADER_FRIENDLY_NAMES.keys()),
         default=BroadInstituteLoader.FRIENDLY_NAME,
         callback=lambda ctx, param, value: LOADER_FRIENDLY_NAMES[value],
     )(function)
-    return function
 
 
 @click.group()
@@ -711,7 +710,7 @@ def cli(log_level):
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, required=True)
 @click.option("--end-locus", "-e", type=int, required=True)
-@convert_options
+@loader_option
 def convert(infile, outfile, precision, decimals, start_locus, end_locus, loader):
     convert_h5(infile, outfile, start_locus, end_locus, precision, decimals, loader)
 
@@ -724,7 +723,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus, loader
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, required=True)
 @click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
-@convert_options
+@loader_option
 def convert_chromosome(
     filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex, loader
 ):
@@ -745,7 +744,7 @@ def convert_chromosome(
 @cli.command()
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
-@convert_options
+@loader_option
 def convert_maf(infile, outfile, loader):
     convert_maf_h5(infile, outfile, loader)
 

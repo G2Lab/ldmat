@@ -761,23 +761,23 @@ def convert_maf(infile, outfile, loader):
 
 @cli.command(short_help="select by range of positions")
 @click.argument("ld-file")
-@click.option("--i-start", type=int, required=True)
-@click.option("--i-end", type=int, required=True)
-@click.option("--j-start", type=int)
-@click.option("--j-end", type=int)
+@click.option("--row-start", "-rs", type=int, required=True)
+@click.option("--row-end", "-re", type=int, required=True)
+@click.option("--col-start", "-cs", type=int)
+@click.option("--col-end", "-ce", type=int)
 @click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
-def submatrix(ld_file, i_start, i_end, j_start, j_end, stream, outfile, plot):
-    if j_start is None:
+def submatrix(ld_file, row_start, row_end, col_start, col_end, stream, outfile, plot):
+    if col_start is None:
         logger.warning("Assuming symmetric start positions")
-        j_start = i_start
-    if j_end is None:
+        col_start = row_start
+    if col_end is None:
         logger.warning("Assuming symmetric end positions")
-        j_end = i_end
+        col_end = row_end
     return get_submatrix_from_chromosome(
         h5py.File(ld_file, "r"),
-        (i_start, i_end),
-        (j_start, j_end),
+        (row_start, row_end),
+        (col_start, col_end),
         range_query=True,
         stream=stream,
     )

@@ -693,7 +693,7 @@ def loader_option(function):
     )(function)
 
 
-@click.group()
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--log-level",
     "-l",
@@ -710,7 +710,7 @@ def cli(log_level):
         logging.basicConfig(level=logging.DEBUG, format="%(message)s")
 
 
-@cli.command()
+@cli.command(short_help="compress a single file")
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=None)
@@ -722,7 +722,7 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus, loader
     convert_h5(infile, outfile, start_locus, end_locus, precision, decimals, loader)
 
 
-@cli.command()
+@cli.command(short_help="compress a bunch of files")
 @click.argument("filepath", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=None)
@@ -748,7 +748,7 @@ def convert_chromosome(
     )
 
 
-@cli.command()
+@cli.command(short_help="add MAF values to an existing file")
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
 @loader_option
@@ -756,7 +756,7 @@ def convert_maf(infile, outfile, loader):
     convert_maf_h5(infile, outfile, loader)
 
 
-@cli.command()
+@cli.command(short_help="select by range of positions")
 @click.argument("ld-file")
 @click.option("--i-start", type=int, required=True)
 @click.option("--i-end", type=int, required=True)
@@ -780,7 +780,7 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, stream, outfile, plot):
     )
 
 
-@cli.command()
+@cli.command(short_help="select by list of positions")
 @click.argument("ld-file")
 @click.option("--row-list", "-r", required=True)
 @click.option("--col-list", "-c")
@@ -822,7 +822,7 @@ def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
     )
 
 
-@cli.command()
+@cli.command(short_help="select by range of MAF values")
 @click.argument("ld-file")
 @click.option("--lower-bound", "-l", type=float, default=0)
 @click.option("--upper-bound", "-u", type=float, default=0.5)

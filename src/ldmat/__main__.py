@@ -700,6 +700,9 @@ def loader_option(function):
     type=click.Choice(["warning", "info", "debug"], case_sensitive=False),
 )
 def cli(log_level):
+    """
+    A set of commands for more efficiently storing and querying linkage disequilibrium matrices.
+    """
     if log_level is not None:
         click.echo(f"Log level: {log_level}")
     if log_level == "warning":
@@ -788,6 +791,7 @@ def submatrix(ld_file, i_start, i_end, j_start, j_end, stream, outfile, plot):
 @output_wrapper
 def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
     """
+    \b
     Works with CSVs of the form:
     chr21:9411245
     chr21:9411410

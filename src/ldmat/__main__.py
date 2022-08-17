@@ -716,33 +716,33 @@ def cli(log_level):
 @cli.command(short_help="compress a single file")
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
-@click.option("--precision", "-p", type=float, default=None)
+@click.option("--min-value", "-m", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, required=True)
 @click.option("--end-locus", "-e", type=int, required=True)
 @loader_option
-def convert(infile, outfile, precision, decimals, start_locus, end_locus, loader):
-    convert_h5(infile, outfile, start_locus, end_locus, precision, decimals, loader)
+def convert(infile, outfile, min_value, decimals, start_locus, end_locus, loader):
+    convert_h5(infile, outfile, start_locus, end_locus, min_value, decimals, loader)
 
 
 @cli.command(short_help="compress a bunch of files")
 @click.argument("filepath", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
-@click.option("--precision", "-p", type=float, default=None)
+@click.option("--min-value", "-m", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, required=True)
 @click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
 @loader_option
 def convert_chromosome(
-    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex, loader
+    filepath, outfile, min_value, decimals, start_locus, chromosome, locus_regex, loader
 ):
     logger.debug(f"Converting chromosome {chromosome}")
 
     convert_full_chromosome_h5(
         filepath,
         outfile,
-        precision,
+        min_value,
         decimals,
         start_locus,
         chromosome,

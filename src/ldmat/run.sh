@@ -11,11 +11,11 @@ source /gpfs/commons/groups/gursoy_lab/rweiner/ld/ldpip/bin/activate
 python3 -V
 
 CHROMOSOME=21
-PRECISION="1" # Value after 0.
+MINVALUE="1" # Value after 0.
 DECIMALS=3
 
-ldmat -l debug convert-chromosome /gpfs/commons/groups/nygcfaculty/gursoy_knowles/UKB_ld/ $CHROMOSOME \
- /gpfs/commons/groups/gursoy_lab/rweiner/ld/data/processed/chr${CHROMOSOME}_p0_${PRECISION}d${DECIMALS}.h5 \
- -p 0.${PRECISION} -d $DECIMALS
+ldmat -l debug convert-chromosome "/gpfs/commons/groups/nygcfaculty/gursoy_knowles/UKB_ld/chr${CHROMOSOME}_*.npz" \
+ /gpfs/commons/groups/gursoy_lab/rweiner/ld/data/processed/chr${CHROMOSOME}_m0_${MINVALUE}d${DECIMALS}.h5 \
+ -m 0.${MINVALUE} -d $DECIMALS -c $CHROMOSOME
 
 echo Finished!

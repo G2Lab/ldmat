@@ -32,17 +32,6 @@ VERSION_ATTR = "version"
 CHROMOSOME_ATTR = "chromosome"
 
 AUX_GROUP = "aux"
-
-MAF_COLS = [
-    "Alternate_id",
-    "RS_id",
-    "Position",
-    "Allele1",
-    "Allele2",
-    "MAF",
-    "Minor Allele",
-    "Info Score",
-]
 MAF_DATASET = "MAF"
 
 TMP_OUT = f"/tmp/ldmat_{uuid4().hex}.csv"
@@ -50,6 +39,125 @@ TMP_OUT = f"/tmp/ldmat_{uuid4().hex}.csv"
 STREAM_THRESHOLD = 1e12
 
 logger = logging.getLogger()
+
+# -----------------------------------------------------------
+# LOADER CLASSES
+# -----------------------------------------------------------
+
+
+class Loader:
+    FRIENDLY_NAME = None
+
+    def load_as_sparse_matrix(self, f):
+        """
+        Should return a scipy.sparse matrix, which is:
+            - square
+            - upper triangular
+            - 0 along the diagonal
+            - CSC format
+        """
+        raise NotImplementedError
+
+    def load_metadata(self, f):
+        """
+        Should return a Pandas Dataframe, where:
+            - the index contains friendly names for all positions
+            - the column "BP" contains the position in the chromosome
+            - there are no other columns
+        """
+        raise NotImplementedError
+
+    def load_maf(self, f):
+        """
+        Should return a Pandas Dataframe, where:
+            - the column "Position" contains the position in the chromosome
+            - the column "MAF" contains the MAF value for each position
+        """
+        raise NotImplementedError
+
+
+class BroadInstituteLoader(Loader):
+    FRIENDLY_NAME = "broad-institute"
+    MAF_COLS = [
+        "Alternate_id",
+        "RS_id",
+        "Position",
+        "Allele1",
+        "Allele2",
+        "MAF",
+        "Minor Allele",
+        "Info Score",
+    ]
+
+    def load_as_sparse_matrix(self, f):
+        sparse_mat = sparse.tril(sparse.load_npz(f), format="csr").T
+        sparse_mat.setdiag(0)
+        return sparse_mat
+
+    def load_metadata(self, f):
+        df_ld_snps = pd.read_table(f.replace(".npz", ".gz"), sep="\s+")
+        df_ld_snps.rename(
+            columns={
+                "chromosome": "CHR",
+                "position": "BP",
+                "allele1": "A1",
+                "allele2": "A2",
+            },
+            inplace=True,
+            errors="ignore",
+        )
+        assert "CHR" in df_ld_snps.columns
+        assert "BP" in df_ld_snps.columns
+        assert "A1" in df_ld_snps.columns
+        assert "A2" in df_ld_snps.columns
+        df_ld_snps.index = (
+            df_ld_snps["CHR"].astype(str)
+            + "."
+            + df_ld_snps["BP"].astype(str)
+            + "."
+            + df_ld_snps["A1"]
+            + "."
+            + df_ld_snps["A2"]
+        )
+        return df_ld_snps[["BP"]]
+
+    def load_maf(self, f):
+        return pd.read_csv(f, sep="\t", header=None, names=self.MAF_COLS)
+
+
+class CSVLoader(Loader):
+    FRIENDLY_NAME = "csv"
+    DELIMITER = ","
+
+    def load_as_sparse_matrix(self, f):
+        df = pd.read_csv(f, index_col=0, sep=self.DELIMITER).fillna(0)
+        sparse_mat = sparse.triu(df, format="csc")
+        sparse_mat.setdiag(0)
+        return sparse_mat
+
+    def load_metadata(self, f):
+        df = pd.read_csv(f, nrows=0, index_col=0, sep=self.DELIMITER).T
+        df["BP"] = df.index.str.split(".").str[1].astype(int)
+        return df
+
+
+class TSVLoader(CSVLoader):
+    FRIENDLY_NAME = "tsv"
+    DELIMITER = "\t"
+
+
+# https://stackoverflow.com/questions/3862310/how-to-find-all-the-subclasses-of-a-class-given-its-name
+def get_all_subclasses(cls):
+    all_subclasses = []
+
+    for subclass in cls.__subclasses__():
+        all_subclasses.append(subclass)
+        all_subclasses.extend(get_all_subclasses(subclass))
+
+    return all_subclasses
+
+
+LOADER_FRIENDLY_NAMES = {cls.FRIENDLY_NAME: cls for cls in get_all_subclasses(Loader)}
 
 # -----------------------------------------------------------
 # CONVERSION FUNCTIONS
@@ -71,18 +179,13 @@ def adjust_to_zero(sparse_matrix, precision):
 def convert_h5(
     infile,
     outfile,
+    start_locus,
+    end_locus,
     precision=None,
     decimals=None,
-    start_locus=None,
-    end_locus=None,
+    loader_class=BroadInstituteLoader,
 ):
-    base_infile = os.path.splitext(infile)[0]
-
-    if not start_locus or not end_locus:
-        filename = base_infile.split("/")[-1]
-        chromosome, start_locus, end_locus = filename.split("_")
-        start_locus, end_locus = int(start_locus), int(end_locus)
-
+    loader = loader_class()
     logger.debug(f"Converting {infile} loci {start_locus} to {end_locus}")
 
     f = h5py.File(outfile, "a")
@@ -99,13 +202,12 @@ def convert_h5(
         del f[group_name]
     group = f.create_group(group_name)
 
-    sparse_mat = sparse.tril(sparse.load_npz(base_infile + ".npz"), format="csr").T
-    sparse_mat.setdiag(0)
+    sparse_mat = loader.load_as_sparse_matrix(infile)
     if decimals:
         sparse_mat.data = np.round(sparse_mat.data, decimals)
     sparse_mat = adjust_to_zero(sparse_mat, precision)
 
-    pos_df = metadata_to_df(base_infile + ".gz")
+    pos_df = loader.load_metadata(infile)
     group.create_dataset(
         POSITION_DATASET,
         data=pos_df,
@@ -150,7 +252,14 @@ def convert_h5(
 
 
 def convert_full_chromosome_h5(
-    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
+    filepath,
+    outfile,
+    precision,
+    decimals,
+    start_locus,
+    chromosome,
+    locus_regex,
+    loader_class=BroadInstituteLoader,
 ):
     f = h5py.File(outfile, "a")
 
@@ -176,49 +285,24 @@ def convert_full_chromosome_h5(
             convert_h5(
                 file,
                 outfile,
-                precision,
-                decimals,
                 first_missing_locus,
                 next_covered_locus,
+                precision,
+                decimals,
+                loader_class=loader_class,
             )
             first_missing_locus = next_covered_locus
 
             logger.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
 
 
-def metadata_to_df(gz_file):
-    df_ld_snps = pd.read_table(gz_file, sep="\s+")
-    df_ld_snps.rename(
-        columns={
-            "chromosome": "CHR",
-            "position": "BP",
-            "allele1": "A1",
-            "allele2": "A2",
-        },
-        inplace=True,
-        errors="ignore",
-    )
-    assert "CHR" in df_ld_snps.columns
-    assert "BP" in df_ld_snps.columns
-    assert "A1" in df_ld_snps.columns
-    assert "A2" in df_ld_snps.columns
-    df_ld_snps.index = (
-        df_ld_snps["CHR"].astype(str)
-        + "."
-        + df_ld_snps["BP"].astype(str)
-        + "."
-        + df_ld_snps["A1"]
-        + "."
-        + df_ld_snps["A2"]
-    )
-    return df_ld_snps[["BP"]]
+def convert_maf_h5(infile, outfile, loader_class=BroadInstituteLoader):
+    loader = loader_class()
 
-
-def convert_maf_h5(infile, outfile):
     f = h5py.File(outfile, "a")
     group = f.require_group(AUX_GROUP)
 
-    maf = pd.read_csv(infile, sep="\t", header=None, names=MAF_COLS)
+    maf = loader.load_maf(infile)
     maf = maf.sort_values("MAF")
     maf = maf[["Position", "MAF"]].to_numpy()
     group.create_dataset(
@@ -592,6 +676,16 @@ def output_wrapper(function):
     return wrapper
 
 
+def loader_option(function):
+    return click.option(
+        "--loader",
+        "-l",
+        type=click.Choice(LOADER_FRIENDLY_NAMES.keys()),
+        default=BroadInstituteLoader.FRIENDLY_NAME,
+        callback=lambda ctx, param, value: LOADER_FRIENDLY_NAMES[value],
+    )(function)
+
+
 @click.group()
 @click.option(
     "--log-level",
@@ -614,10 +708,11 @@ def cli(log_level):
 @click.argument("outfile", type=click.Path(exists=False))
 @click.option("--precision", "-p", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
-@click.option("--start-locus", "-s", type=int, default=None)
-@click.option("--end-locus", "-e", type=int, default=None)
-def convert(infile, outfile, precision, decimals, start_locus, end_locus):
-    convert_h5(infile, outfile, precision, decimals, start_locus, end_locus)
+@click.option("--start-locus", "-s", type=int, required=True)
+@click.option("--end-locus", "-e", type=int, required=True)
+@loader_option
+def convert(infile, outfile, precision, decimals, start_locus, end_locus, loader):
+    convert_h5(infile, outfile, start_locus, end_locus, precision, decimals, loader)
 
 
 @cli.command()
@@ -628,21 +723,30 @@ def convert(infile, outfile, precision, decimals, start_locus, end_locus):
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, required=True)
 @click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
+@loader_option
 def convert_chromosome(
-    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
+    filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex, loader
 ):
     logger.debug(f"Converting chromosome {chromosome}")
 
     convert_full_chromosome_h5(
-        filepath, outfile, precision, decimals, start_locus, chromosome, locus_regex
+        filepath,
+        outfile,
+        precision,
+        decimals,
+        start_locus,
+        chromosome,
+        locus_regex,
+        loader,
     )
 
 
 @cli.command()
 @click.argument("infile", type=click.Path())
 @click.argument("outfile", type=click.Path(exists=False))
-def convert_maf(infile, outfile):
-    convert_maf_h5(infile, outfile)
+@loader_option
+def convert_maf(infile, outfile, loader):
+    convert_maf_h5(infile, outfile, loader)
 
 
 @cli.command()

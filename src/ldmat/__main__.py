@@ -131,12 +131,12 @@ class CSVLoader(Loader):
 
     def load_as_sparse_matrix(self, f):
         df = pd.read_csv(f, index_col=0, sep=self.DELIMITER).fillna(0)
-        sparse_mat = sparse.triu(sparse.csc_matrix(df))
+        sparse_mat = sparse.triu(df, format="csc")
         sparse_mat.setdiag(0)
         return sparse_mat
 
     def load_metadata(self, f):
-        df = pd.read_csv(f, nrows=0, index_col=0, set=self.DELIMITER).T
+        df = pd.read_csv(f, nrows=0, index_col=0, sep=self.DELIMITER).T
         df["BP"] = df.index.str.split(".").str[1].astype(int)
         return df
 

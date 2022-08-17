@@ -785,8 +785,8 @@ def submatrix(ld_file, row_start, row_end, col_start, col_end, stream, outfile, 
 
 @cli.command(short_help="select by list of positions")
 @click.argument("ld-file")
-@click.option("--row-list", "-r", required=True)
-@click.option("--col-list", "-c")
+@click.option("--row-list", "-r", type=click.Path(), required=True)
+@click.option("--col-list", "-c", type=click.Path())
 @click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
 def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):

@@ -191,11 +191,6 @@ def convert_h5(
         del f[group_name]
     group = f.create_group(group_name)
 
-    sparse_mat = loader.load_as_sparse_matrix(infile)
-    if decimals:
-        sparse_mat.data = np.round(sparse_mat.data, decimals)
-    sparse_mat = adjust_to_zero(sparse_mat, precision)
-
     pos_df = loader.load_metadata(infile)
     group.create_dataset(
         POSITION_DATASET,
@@ -221,6 +216,11 @@ def convert_h5(
     pos_df = pos_df[pos_df.BP.between(start_locus, end_locus)]
 
     if len(pos_df):
+        sparse_mat = loader.load_as_sparse_matrix(infile)
+        if decimals:
+            sparse_mat.data = np.round(sparse_mat.data, decimals)
+        sparse_mat = adjust_to_zero(sparse_mat, precision)
+
         lower_pos, upper_pos = pos_df.relative_pos[[0, -1]]
         sparse_mat = sparse_mat[lower_pos : upper_pos + 1, :]
         dense = sparse_mat.todense()

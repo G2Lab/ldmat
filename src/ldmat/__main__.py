@@ -95,29 +95,18 @@ class BroadInstituteLoader(Loader):
         return sparse_mat
 
     def load_metadata(self, f):
-        df_ld_snps = pd.read_table(f.replace(".npz", ".gz"), sep="\s+")
-        df_ld_snps.rename(
-            columns={
-                "chromosome": "CHR",
-                "position": "BP",
-                "allele1": "A1",
-                "allele2": "A2",
-            },
-            inplace=True,
-            errors="ignore",
-        )
-        assert "CHR" in df_ld_snps.columns
-        assert "BP" in df_ld_snps.columns
-        assert "A1" in df_ld_snps.columns
-        assert "A2" in df_ld_snps.columns
+        df_ld_snps = pd.read_table(
+            f.replace(".npz", ".gz"),
+            sep="\s+",
+        ).rename(columns={"position": "BP"})
         df_ld_snps.index = (
-            df_ld_snps["CHR"].astype(str)
+            df_ld_snps["chromosome"].astype(str)
             + "."
             + df_ld_snps["BP"].astype(str)
             + "."
-            + df_ld_snps["A1"]
+            + df_ld_snps["allele1"]
             + "."
-            + df_ld_snps["A2"]
+            + df_ld_snps["allele2"]
         )
         return df_ld_snps[["BP"]]
 

@@ -7,7 +7,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="ldmat",
-    version="0.1.4",
+    version="0.1.5",
     author="Rockwell Weiner",
     author_email="rockwellw@gmail.com",
     description=("Efficient Storage and Querying of Linkage Disequilibrium Matrices"),
@@ -29,16 +29,5 @@ setup(
         "pandas>=1.3.4",
         "scipy>=1.8.1",
         "seaborn>=0.11.2",
-    ],
-    data_files=[
-        (
-            "ldmat/examples",
-            [
-                "examples/chr21_partial.h5",
-                "examples/query_result_maf.npz",
-                "examples/query_result.csv",
-                "examples/query_result.npz",
-            ],
-        )
     ],
 )

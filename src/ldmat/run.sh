@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=Test                  # Job name
-#SBATCH --mem=16G                            # Job memory request. Different units can be specified using the suffix [K|M|G|T]
-#SBATCH --time=4:00:00                       # Time limit 4 hours
-#SBATCH --output=logs/stdout_%j.log               # Standard output and error log
+#SBATCH --mem=16G                        # Job memory request. Different units can be specified using the suffix [K|M|G|T]
+#SBATCH --time=4:00:00                   # Time limit 4 hours
+#SBATCH --output=logs/stdout_%j.log      # Standard output and error log
 
 set -x
 

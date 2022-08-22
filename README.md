@@ -7,6 +7,24 @@ Install the package with:
 pip install ldmat
 ```
 
+### Downloading Example Files
+THIS IS A TEMPORARY WORKAROUND UNTIL A MORE PERMANENT STORAGE SOLUTION IS FOUND.
+
+Run the following commands to create a directory called `examples` with all of the example and test files in it. 
+```
+mkdir ldmat_tmp
+cd ldmat_tmp
+git init
+git config core.sparseCheckout true
+git remote add origin https://github.com/G2Lab/ldmat.git
+echo "examples/" > .git/info/sparse-checkout
+git fetch --depth 1 origin
+git pull origin main
+cd ..
+mv ldmat_tmp/examples .
+rm -rf ldmat_tmp
+```
+
 ## Getting Started
 To see all the commands available, run `ldmat`.
 

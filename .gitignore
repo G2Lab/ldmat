@@ -9,3 +9,4 @@ graphics/*
 dist/*
 build/*
 *.egg-info
+src/ldmat/run.sh

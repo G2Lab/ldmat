@@ -1,1 +1,6 @@
 examples/chr0_30000001_33000001.npz filter=lfs diff=lfs merge=lfs -text
+examples/query_result.csv filter=lfs diff=lfs merge=lfs -text
+examples/query_result.npz filter=lfs diff=lfs merge=lfs -text
+examples/query_result_maf.npz filter=lfs diff=lfs merge=lfs -text
+examples/chr0_30000001_33000001.gz filter=lfs diff=lfs merge=lfs -text
+examples/chr21_partial.h5 filter=lfs diff=lfs merge=lfs -text

@@ -645,14 +645,20 @@ def handle_output(res, outfile, plot):
             res = pd.read_csv(filepath, index_col=0)
             os.remove(filepath)
     if outfile:
-        if outfile.endswith(".npz"):
+        _, ext = os.path.splitext(outfile)
+        if ext == ".npz":
             sparse.save_npz(outfile, sparse.coo_matrix(res))
         else:
-            if not outfile.endswith(".csv"):
+            if ext == ".csv":
+                delimiter = ","
+            elif ext == ".tsv":
+                delimiter = "\t"
+            else:
                 logger.warning(
-                    "Output file extension not understood, outputting as CSV."
+                    "Output file extension not understood, using CSV instead."
                 )
-            res.to_csv(outfile)
+                delimiter = ","
+            res.to_csv(outfile, sep=delimiter)
     else:
         print(res)
 

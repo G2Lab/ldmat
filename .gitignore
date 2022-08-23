@@ -4,7 +4,7 @@
 !.pre-commit-config.yaml
 !.gitattributes
 data/*
-__pycache__/*
+*__pycache__*
 graphics/*
 dist/*
 build/*

@@ -656,11 +656,7 @@ def select_submatrix_by_range(
     chromosome_group, row_start, row_end, col_start, col_end, stream=None
 ):
     return get_submatrix_from_chromosome(
-        chromosome_group,
-        (row_start, row_end),
-        (col_start, col_end),
-        True,
-        stream,
+        chromosome_group, (row_start, row_end), (col_start, col_end), True, stream
     )
 
 

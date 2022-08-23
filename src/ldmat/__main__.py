@@ -643,7 +643,7 @@ def validate_version(f):
     existing_version = f.attrs.get(VERSION_ATTR)
     if existing_version != VERSION:
         raise ValueError(
-            f"Version mismatch! Existing file is {existing_version}, but code version is {VERSION}"
+            f"Version mismatch! Existing file version is {existing_version}, but code version is {VERSION}"
         )
 
 

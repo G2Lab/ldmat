@@ -600,6 +600,24 @@ def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound, strea
     )
 
 
+def load_loci_list(chromosome_group, list_file):
+    chromosome = chromosome_group.attrs.get(CHROMOSOME_ATTR)
+
+    i_list = pd.read_csv(list_file, header=None)
+    original_len = len(i_list)
+    i_list[["chromosome", "locus"]] = i_list[0].str.split(":", expand=True)
+    i_list = i_list[
+        i_list["chromosome"].str.replace("chr", "").astype(int) == chromosome
+    ]
+
+    if len(i_list) < original_len:
+        logger.warning(
+            f"Dropped {original_len - len(i_list)} rows not matching chromosome {chromosome}!"
+        )
+
+    return i_list["locus"].astype(int).to_numpy()
+
+
 # -----------------------------------------------------------
 # VISUALIZATION FUNCTIONS
 # -----------------------------------------------------------
@@ -793,31 +811,18 @@ def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
     chr21:9411485
     ...
     """
+    chromosome_group = h5py.File(ld_file, "r")
 
-    i_list = (
-        pd.read_csv(row_list, header=None)
-        .iloc[:, 0]
-        .str.split(":")
-        .str[1]
-        .astype(int)
-        .to_numpy()
-    )
+    i_list = load_loci_list(chromosome_group, row_list)
 
     if col_list is None:
         logger.warning("Assuming symmetric matrix")
         j_list = i_list
     else:
-        j_list = (
-            pd.read_csv(col_list, header=None)
-            .iloc[:, 0]
-            .str.split(":")
-            .str[1]
-            .astype(int)
-            .to_numpy()
-        )
+        j_list = load_loci_list(chromosome_group, col_list)
 
     return get_submatrix_from_chromosome(
-        h5py.File(ld_file, "r"), i_list, j_list, range_query=False, stream=stream
+        chromosome_group, i_list, j_list, range_query=False, stream=stream
     )
 
 

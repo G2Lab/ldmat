@@ -97,7 +97,7 @@ class BroadInstituteLoader(Loader):
     def load_metadata(self, f):
         df_ld_snps = pd.read_table(
             f.replace(".npz", ".gz"),
-            sep="\s+",
+            sep=r"\s+",
         ).rename(columns={"position": "BP"})
         df_ld_snps.index = (
             df_ld_snps["chromosome"].astype(str)
@@ -419,8 +419,8 @@ def get_horizontal_slice(group, rows, columns, range_query):
 
 def overlap(values, interval, range_query):
     if range_query:
-        overlap = max(values[0], interval[0]), min(values[1], interval[1])
-        return overlap if overlap[0] <= overlap[1] else []
+        overlap_interval = max(values[0], interval[0]), min(values[1], interval[1])
+        return overlap_interval if overlap_interval[0] <= overlap_interval[1] else []
     return [index for index in values if interval[0] <= index < interval[1]]
 
 
@@ -470,8 +470,8 @@ def get_submatrix_from_chromosome(
         else:
             stream = len(i_values) * len(j_values) > STREAM_THRESHOLD
 
+    skeleton_columns = pd.Index(())
     if stream:
-        skeleton_columns = pd.Index(())
         # find full set of columns
         for interval in intervals:
             i_overlap = overlap(i_values, interval, range_query)
@@ -648,6 +648,51 @@ def validate_version(f):
 
 
 # -----------------------------------------------------------
+# PUBLIC FACING FUNCTIONS
+# -----------------------------------------------------------
+
+
+def select_submatrix_by_range(
+    ld_file, row_start, row_end, col_start, col_end, stream=None
+):
+    if col_start is None:
+        logger.warning("Assuming symmetric start positions")
+        col_start = row_start
+    if col_end is None:
+        logger.warning("Assuming symmetric end positions")
+        col_end = row_end
+    return get_submatrix_from_chromosome(
+        h5py.File(ld_file, "r"),
+        (row_start, row_end),
+        (col_start, col_end),
+        range_query=True,
+        stream=stream,
+    )
+
+
+def select_submatrix_by_list(ld_file, row_list, col_list, stream=None):
+    chromosome_group = h5py.File(ld_file, "r")
+
+    i_list = load_loci_list(chromosome_group, row_list)
+
+    if col_list is None:
+        logger.warning("Assuming symmetric matrix")
+        j_list = i_list
+    else:
+        j_list = load_loci_list(chromosome_group, col_list)
+
+    return get_submatrix_from_chromosome(
+        chromosome_group, i_list, j_list, range_query=False, stream=stream
+    )
+
+
+def select_submatrix_by_maf(ld_file, lower_bound, upper_bound, stream=None):
+    return get_submatrix_by_maf_range(
+        h5py.File(ld_file, "r"), lower_bound, upper_bound, stream
+    )
+
+
+# -----------------------------------------------------------
 # CLI WRAPPERS
 # -----------------------------------------------------------
 
@@ -745,7 +790,7 @@ def convert(infile, outfile, min_value, decimals, start_locus, end_locus, loader
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
 @click.option("--chromosome", "-c", type=int, required=True)
-@click.option("--locus-regex", "-r", type=str, default="_(\d+)", show_default=True)
+@click.option("--locus-regex", "-r", type=str, default=r"_(\d+)", show_default=True)
 @loader_option
 def convert_chromosome(
     filepath, outfile, min_value, decimals, start_locus, chromosome, locus_regex, loader
@@ -781,18 +826,8 @@ def convert_maf(infile, outfile, loader):
 @click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
 def submatrix(ld_file, row_start, row_end, col_start, col_end, stream, outfile, plot):
-    if col_start is None:
-        logger.warning("Assuming symmetric start positions")
-        col_start = row_start
-    if col_end is None:
-        logger.warning("Assuming symmetric end positions")
-        col_end = row_end
-    return get_submatrix_from_chromosome(
-        h5py.File(ld_file, "r"),
-        (row_start, row_end),
-        (col_start, col_end),
-        range_query=True,
-        stream=stream,
+    return select_submatrix_by_range(
+        ld_file, row_start, row_end, col_start, col_end, stream
     )
 
 
@@ -811,19 +846,7 @@ def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
     chr21:9411485
     ...
     """
-    chromosome_group = h5py.File(ld_file, "r")
-
-    i_list = load_loci_list(chromosome_group, row_list)
-
-    if col_list is None:
-        logger.warning("Assuming symmetric matrix")
-        j_list = i_list
-    else:
-        j_list = load_loci_list(chromosome_group, col_list)
-
-    return get_submatrix_from_chromosome(
-        chromosome_group, i_list, j_list, range_query=False, stream=stream
-    )
+    return select_submatrix_by_list(ld_file, row_list, col_list, stream)
 
 
 @cli.command(short_help="select by range of MAF values")
@@ -833,9 +856,7 @@ def submatrix_by_list(ld_file, row_list, col_list, stream, outfile, plot):
 @click.option("--stream/--no-stream", "-s", default=None)
 @output_wrapper
 def submatrix_by_maf(ld_file, lower_bound, upper_bound, stream, outfile, plot):
-    return get_submatrix_by_maf_range(
-        h5py.File(ld_file, "r"), lower_bound, upper_bound, stream
-    )
+    return select_submatrix_by_maf(ld_file, lower_bound, upper_bound, stream)
 
 
 if __name__ == "__main__":

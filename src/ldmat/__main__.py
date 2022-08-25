@@ -591,6 +591,10 @@ def get_maf_indices_by_range(maf_dataset, lower_bound, upper_bound):
 
 
 def get_submatrix_by_maf_range(chromosome_group, lower_bound, upper_bound, stream=None):
+    if chromosome_group.get(AUX_GROUP, {}).get(MAF_DATASET) is None:
+        raise ValueError(
+            "File is missing MAF dataset. Try adding it with `convert-maf`."
+        )
     indices = get_maf_indices_by_range(
         chromosome_group[AUX_GROUP][MAF_DATASET], lower_bound, upper_bound
     )

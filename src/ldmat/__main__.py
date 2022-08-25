@@ -23,7 +23,7 @@ DIAGONAL_LD = 1
 LD_DATASET = "LD_values"
 POSITION_DATASET = "positions"
 NAME_DATASET = "names"
-CHUNK_PREFIX = "chunk"
+CHUNK_NAME = "chunk_{locus}"
 START_ATTR = "start_locus"
 END_ATTR = "end_locus"
 PREC_ATTR = "min_score"
@@ -186,7 +186,7 @@ def convert_h5(
     f.attrs[PREC_ATTR] = precision or np.nan
     f.attrs[DEC_ATTR] = decimals or np.nan
 
-    group_name = f"{CHUNK_PREFIX}_{start_locus}"
+    group_name = CHUNK_NAME.format(locus=start_locus)
     if group_name in f:
         del f[group_name]
     group = f.create_group(group_name)
@@ -477,7 +477,7 @@ def get_submatrix_from_chromosome(
             i_overlap = overlap(i_values, interval, range_query)
             j_overlap = overlap(j_values, interval, range_query)
 
-            group = chromosome_group[f"{CHUNK_PREFIX}_{interval[0]}"]
+            group = chromosome_group[CHUNK_NAME.format(locus=interval[0])]
             if i_overlap and j_overlap:
                 main_slice = get_horizontal_slice(
                     group, (None, None), j_overlap, range_query
@@ -514,7 +514,7 @@ def get_submatrix_from_chromosome(
         i_overlap = overlap(i_values, interval, range_query)
         j_overlap = overlap(j_values, interval, range_query)
 
-        group = chromosome_group[f"{CHUNK_PREFIX}_{interval[0]}"]
+        group = chromosome_group[CHUNK_NAME.format(locus=interval[0])]
 
         new_section_bottom = None
         # get right overlap, bottom overlap, triangle overlap
@@ -570,7 +570,7 @@ def get_submatrix_from_chromosome(
         )
         df = TMP_OUT
 
-    logger.debug(
+    logger.info(
         "Constructing matrix took {:.0f} seconds.".format(time.time() - start_time)
     )
     return df

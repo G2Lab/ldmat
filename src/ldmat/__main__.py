@@ -6,6 +6,7 @@ import shutil
 import time
 from functools import wraps
 from heapq import merge
+from typing import List, Union
 from uuid import uuid4
 
 import click
@@ -657,24 +658,35 @@ def validate_version(f):
 
 
 def select_submatrix_by_range(
-    chromosome_group, row_start, row_end, col_start, col_end, stream=None
-):
+    ld_h5: h5py.File,
+    row_start: int,
+    row_end: int,
+    col_start: int,
+    col_end: int,
+    stream: bool = None,
+) -> Union[pd.DataFrame, str]:
     return get_submatrix_from_chromosome(
-        chromosome_group, (row_start, row_end), (col_start, col_end), True, stream
+        ld_h5, (row_start, row_end), (col_start, col_end), True, stream
     )
 
 
-def select_submatrix_by_list(chromosome_group, row_list, col_list, stream=None):
+def select_submatrix_by_list(
+    ld_h5: h5py.File,
+    row_list: List[int],
+    col_list: List[int],
+    stream: bool = None,
+) -> Union[pd.DataFrame, str]:
     # At this point the row and column lists should already be validated.
-    return get_submatrix_from_chromosome(
-        chromosome_group, row_list, col_list, False, stream
-    )
+    return get_submatrix_from_chromosome(ld_h5, row_list, col_list, False, stream)
 
 
-def select_submatrix_by_maf(chromosome_group, lower_bound, upper_bound, stream=None):
-    return get_submatrix_by_maf_range(
-        chromosome_group, lower_bound, upper_bound, stream
-    )
+def select_submatrix_by_maf(
+    ld_h5: h5py.File,
+    lower_bound: float,
+    upper_bound: float,
+    stream: bool = None,
+) -> Union[pd.DataFrame, str]:
+    return get_submatrix_by_maf_range(ld_h5, lower_bound, upper_bound, stream)
 
 
 # -----------------------------------------------------------

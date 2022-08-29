@@ -2,12 +2,11 @@ import glob
 import logging
 import os
 import re
-import shutil
 import time
 from functools import wraps
 from heapq import merge
+from tempfile import NamedTemporaryFile
 from typing import List, Union
-from uuid import uuid4
 
 import click
 import h5py
@@ -34,8 +33,6 @@ CHROMOSOME_ATTR = "chromosome"
 
 AUX_GROUP = "aux"
 MAF_DATASET = "MAF"
-
-TMP_OUT = f"/tmp/ldmat_{uuid4().hex}.csv"
 
 STREAM_THRESHOLD = 1e12
 
@@ -506,7 +503,9 @@ def get_submatrix_from_chromosome(
                     bottom_slice.columns, sort=False
                 )
 
-        pd.DataFrame(columns=skeleton_columns).to_csv(TMP_OUT)
+        with NamedTemporaryFile(delete=False) as tmp:
+            tmp_name = tmp.name
+            pd.DataFrame(columns=skeleton_columns).to_csv(tmp_name)
 
     df = None
     for interval in intervals:
@@ -560,16 +559,16 @@ def get_submatrix_from_chromosome(
             df = df.iloc[new_section_bottom:]
             write_section = write_section.reindex(columns=skeleton_columns, copy=False)
             logger.debug(f"Writing interval {interval}, {len(write_section)} rows.")
-            write_section.to_csv(TMP_OUT, mode="a", header=False)
+            write_section.to_csv(tmp_name, mode="a", header=False)
 
     if df is None:
         df = pd.DataFrame()
 
     if stream:
         df.reindex(columns=skeleton_columns, copy=False).to_csv(
-            TMP_OUT, mode="a", header=False
+            tmp_name, mode="a", header=False
         )
-        df = TMP_OUT
+        df = tmp_name
 
     logger.info(
         "Constructing matrix took {:.0f} seconds.".format(time.time() - start_time)
@@ -699,7 +698,8 @@ def handle_output(res, outfile, plot):
         filepath = res
         if outfile and outfile.endswith(".csv") and not plot:
             # special handling for streaming a csv and nothing else
-            shutil.move(filepath, outfile)
+            os.remove(outfile)
+            os.link(filepath, outfile)
             return
         else:
             res = pd.read_csv(filepath, index_col=0)

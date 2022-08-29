@@ -20,7 +20,7 @@ def test_npz_query():
                 14900001,
                 "--row-end",
                 15100001,
-                "-o",
+                "--outfile",
                 tmp.name,
             ],
         )
@@ -41,7 +41,7 @@ def test_csv_query():
                 14900001,
                 "--row-end",
                 15100001,
-                "-o",
+                "--outfile",
                 tmp.name,
             ],
         )
@@ -56,7 +56,15 @@ def test_maf_query():
         runner = CliRunner()
         result = runner.invoke(
             submatrix_by_maf,
-            ["examples/chr21_partial.h5", "-l", 0.2, "-u", 0.22, "-o", tmp.name],
+            [
+                "examples/chr21_partial.h5",
+                "--lower-bound",
+                0.2,
+                "--upper-bound",
+                0.22,
+                "--outfile",
+                tmp.name,
+            ],
         )
         assert result.exit_code == 0, print(result.output)
 
@@ -75,9 +83,9 @@ def test_streaming_query():
                 14900001,
                 "--row-end",
                 15100001,
-                "-o",
+                "--outfile",
                 tmp.name,
-                "-s",
+                "--stream",
             ],
         )
         assert result.exit_code == 0, print(result.output)
@@ -91,7 +99,16 @@ def test_streaming_maf_query():
         runner = CliRunner()
         result = runner.invoke(
             submatrix_by_maf,
-            ["examples/chr21_partial.h5", "-l", 0.2, "-u", 0.22, "-o", tmp.name, "-s"],
+            [
+                "examples/chr21_partial.h5",
+                "--lower-bound",
+                0.2,
+                "--upper-bound",
+                0.22,
+                "--outfile",
+                tmp.name,
+                "--stream",
+            ],
         )
         assert result.exit_code == 0, print(result.output)
 

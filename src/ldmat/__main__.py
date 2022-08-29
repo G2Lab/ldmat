@@ -698,7 +698,10 @@ def handle_output(res, outfile, plot):
         filepath = res
         if outfile and outfile.endswith(".csv") and not plot:
             # special handling for streaming a csv and nothing else
-            os.remove(outfile)
+            try:
+                os.remove(outfile)
+            except OSError:
+                pass
             os.link(filepath, outfile)
             return
         else:

@@ -46,9 +46,10 @@ logger = logging.getLogger()
 class Loader:
     FRIENDLY_NAME = None
 
-    def load_as_sparse_matrix(self, f):
+    def load_as_sparse_matrix(self, f: str):
         """
-        Should return a scipy.sparse matrix, which is:
+        Load LD values from the file f.
+        Should return a scipy sparse matrix, which is:
             - square
             - upper triangular
             - 0 along the diagonal
@@ -56,8 +57,9 @@ class Loader:
         """
         raise NotImplementedError
 
-    def load_metadata(self, f):
+    def load_metadata(self, f: str):
         """
+        Load position metadata from the file f.
         Should return a Pandas Dataframe, where:
             - the index contains friendly names for all positions
             - the column "BP" contains the position in the chromosome
@@ -65,8 +67,9 @@ class Loader:
         """
         raise NotImplementedError
 
-    def load_maf(self, f):
+    def load_maf(self, f: str):
         """
+        Load Minor Allele Frequencies from the file f.
         Should return a Pandas Dataframe, where:
             - the column "Position" contains the position in the chromosome
             - the column "MAF" contains the MAF value for each position
@@ -112,9 +115,8 @@ class BroadInstituteLoader(Loader):
         return pd.read_csv(f, sep="\t", header=None, names=self.MAF_COLS)
 
 
-class CSVLoader(Loader):
-    FRIENDLY_NAME = "csv"
-    DELIMITER = ","
+class DSVLoader(Loader):
+    DELIMITER = None
 
     def load_as_sparse_matrix(self, f):
         df = pd.read_csv(f, index_col=0, sep=self.DELIMITER).fillna(0)
@@ -128,7 +130,12 @@ class CSVLoader(Loader):
         return df
 
 
-class TSVLoader(CSVLoader):
+class CSVLoader(DSVLoader):
+    FRIENDLY_NAME = "csv"
+    DELIMITER = ","
+
+
+class TSVLoader(DSVLoader):
     FRIENDLY_NAME = "tsv"
     DELIMITER = "\t"
 
@@ -144,7 +151,9 @@ def get_all_subclasses(cls):
     return all_subclasses
 
 
-LOADER_FRIENDLY_NAMES = {cls.FRIENDLY_NAME: cls for cls in get_all_subclasses(Loader)}
+LOADER_FRIENDLY_NAMES = {
+    cls.FRIENDLY_NAME: cls for cls in get_all_subclasses(Loader) if cls.FRIENDLY_NAME
+}
 
 # -----------------------------------------------------------
 # CONVERSION FUNCTIONS
@@ -747,6 +756,7 @@ def loader_option(function):
         "-l",
         type=click.Choice(LOADER_FRIENDLY_NAMES.keys()),
         default=BroadInstituteLoader.FRIENDLY_NAME,
+        show_default=True,
         callback=lambda ctx, param, value: LOADER_FRIENDLY_NAMES[value],
     )(function)
 

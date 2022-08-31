@@ -108,3 +108,23 @@ The inputs to this method are:
 
 Typically, the results of each of these methods will be a pandas DataFrame. However, if the data is streamed, the result
 will be a string, the path to the CSV result.
+
+## Input Loaders
+The default input format to this tool is the files found [here](https://alkesgroup.broadinstitute.org/UKBB_LD/).
+However, CSVs and TSVs are also supported natively, if they are in the same format as the output of the `submatrix` commands.
+In this case, use the `--loader` option to specify the format, like:
+```
+ldmat convert-chromosome "examples/chr0_*.csv" YOUR_OUTPUT.h5 --loader csv
+```
+
+### Custom Loaders
+If your data is in a different format, you may wish to write a custom loader.
+This is easy, and simply requires implementing a few methods in a new subclass of `Loader`.
+
+The two methods that must be implemented are `load_as_sparse_matrix` and `load_metadata`.
+If you have a custom MAF format, implement `load_maf` as well.
+
+Finally, make sure to give your loader a `FRIENDLY_NAME` so it can be referenced by the CLI.
+
+If you think your input format is generic enough, or otherwise likely to be reused, feel free to submit
+a pull request to add your loader to the package.

@@ -647,10 +647,10 @@ def plot_heatmap(df, outfile):
     f, ax = plt.subplots(figsize=figsize)
 
     norm = matplotlib.colors.Normalize(-1, 1)
-    colors = [[norm(-1), "red"], [norm(0), "white"], [norm(1), "blue"]]
+    colors = [[norm(-1), "blue"], [norm(0), "white"], [norm(1), "red"]]
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", colors)
 
-    sns.heatmap(df, vmin=-1, vmax=1, center=0, cmap=cmap)
+    sns.heatmap(df, vmin=-1, vmax=1, center=0, cmap=cmap, square=True)
     if outfile:
         f.savefig(outfile.split(".")[0], dpi=DPI)
     else:

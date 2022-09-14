@@ -10,10 +10,12 @@ from typing import List, Union
 
 import click
 import h5py
+import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.sparse as sparse
+import seaborn
 import seaborn as sns
 
 VERSION = "0.0.2"
@@ -634,15 +636,23 @@ def load_loci_list(chromosome_group, list_file):
 # -----------------------------------------------------------
 # VISUALIZATION FUNCTIONS
 # -----------------------------------------------------------
+SMALL_FIGSIZE = (11, 9)
+LARGE_FIGSIZE = (33, 27)
+DPI = 1000
 
 
 def plot_heatmap(df, outfile):
     logger.info("Plotting...")
-    figsize = (33, 27) if outfile else (11, 9)
+    figsize = LARGE_FIGSIZE if outfile else SMALL_FIGSIZE
     f, ax = plt.subplots(figsize=figsize)
-    sns.heatmap(df, vmin=0, vmax=1, center=0)
+
+    norm = matplotlib.colors.Normalize(-1, 1)
+    colors = [[norm(-1), "red"], [norm(0), "white"], [norm(1), "blue"]]
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", colors)
+
+    sns.heatmap(df, vmin=-1, vmax=1, center=0, cmap=cmap)
     if outfile:
-        f.savefig(outfile.split(".")[0], dpi=1000)
+        f.savefig(outfile.split(".")[0], dpi=DPI)
     else:
         plt.show()
 

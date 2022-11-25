@@ -255,6 +255,7 @@ def convert_full_chromosome_h5(
     precision,
     decimals,
     start_locus,
+    max_chunk_width,
     chromosome,
     locus_regex,
     loader_class=BroadInstituteLoader,
@@ -281,24 +282,36 @@ def convert_full_chromosome_h5(
 
     first_missing_locus = start_locus
 
-    for i, (file, local_start_locus, local_end_locus) in enumerate(files):
-        if local_start_locus >= start_locus:
-            if i + 1 < len(files):
-                next_covered_locus = files[i + 1][1]
-            else:
-                next_covered_locus = local_end_locus
-            convert_h5(
-                file,
-                outfile,
-                first_missing_locus,
-                next_covered_locus,
-                precision,
-                decimals,
-                loader_class=loader_class,
-            )
-            first_missing_locus = next_covered_locus
+    i = 0
+    while i < len(files):
+        file, local_start_locus, local_end_locus = files[i]
+        if local_start_locus < start_locus:
+            i += 1
+            continue
 
-            logger.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
+        if i + 1 < len(files):
+            next_covered_locus = files[i+1][1]
+        else:
+            next_covered_locus = local_end_locus
+
+        if max_chunk_width and (first_missing_locus + max_chunk_width < next_covered_locus):
+            next_locus = first_missing_locus + max_chunk_width
+        else:
+            next_locus = next_covered_locus
+            i += 1
+
+        convert_h5(
+            file,
+            outfile,
+            first_missing_locus,
+            next_locus,
+            precision,
+            decimals,
+            loader_class=loader_class,
+        )
+        first_missing_locus = next_locus
+
+        logger.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
 
 
 def convert_maf_h5(infile, outfile, loader_class=BroadInstituteLoader):
@@ -809,11 +822,12 @@ def convert(infile, outfile, min_value, decimals, start_locus, end_locus, loader
 @click.option("--min-value", "-m", type=float, default=None)
 @click.option("--decimals", "-d", type=int, default=None)
 @click.option("--start-locus", "-s", type=int, default=1)
+@click.option("--max-chunk-width", "-w", type=int, default=None)
 @click.option("--chromosome", "-c", type=int, required=True)
 @click.option("--locus-regex", "-r", type=str, default=r"_(\d+)", show_default=True)
 @loader_option
 def convert_chromosome(
-    filepath, outfile, min_value, decimals, start_locus, chromosome, locus_regex, loader
+    filepath, outfile, min_value, decimals, start_locus, max_chunk_width, chromosome, locus_regex, loader
 ):
     logger.debug(f"Converting chromosome {chromosome}")
 
@@ -823,6 +837,7 @@ def convert_chromosome(
         min_value,
         decimals,
         start_locus,
+        max_chunk_width,
         chromosome,
         locus_regex,
         loader,

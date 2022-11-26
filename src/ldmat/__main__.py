@@ -311,7 +311,7 @@ def convert_full_chromosome_h5(
         )
         first_missing_locus = next_locus
 
-        logger.info("{:.0f}% complete".format(((i + 1) * 100) / len(files)))
+        logger.info("{:.0f}% complete".format((i * 100) / len(files)))
 
 
 def convert_maf_h5(infile, outfile, loader_class=BroadInstituteLoader):

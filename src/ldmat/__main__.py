@@ -406,7 +406,10 @@ def extract_metadata_df_from_group(group):
     df = pd.DataFrame(
         group[POSITION_DATASET], columns=["BP"], index=group[NAME_DATASET]
     )
-    df["relative_pos"] = np.arange(len(df))
+    df["relative_col"] = np.arange(len(df))
+
+    start_offset = len(df[df.BP < group.attrs[START_ATTR]])
+    df["relative_row"] = df["relative_col"] - start_offset
     return df
 
 
@@ -419,8 +422,8 @@ def get_horizontal_slice(group, rows, columns, range_query):
         row_inds = df_ld_snps.BP.isin(rows)
         col_inds = df_ld_snps.BP.isin(columns)
 
-    row_positions = df_ld_snps[row_inds].relative_pos
-    col_positions = df_ld_snps[col_inds].relative_pos
+    row_positions = df_ld_snps[row_inds].relative_row
+    col_positions = df_ld_snps[col_inds].relative_col
 
     h_slice = None
     if len(row_positions) and len(col_positions):

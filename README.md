@@ -12,6 +12,7 @@ THIS IS A TEMPORARY WORKAROUND UNTIL A MORE PERMANENT STORAGE SOLUTION IS FOUND.
 
 Run the following commands to create a directory called `examples` with all of the example and test files in it. 
 ```
+# Requires git-lfs
 mkdir ldmat_tmp
 cd ldmat_tmp
 git init
@@ -20,6 +21,8 @@ git remote add origin https://github.com/G2Lab/ldmat.git
 echo "examples/" > .git/info/sparse-checkout
 git fetch --depth 1 origin
 git pull origin main
+git lfs install
+git lfs pull
 cd ..
 mv ldmat_tmp/examples .
 rm -rf ldmat_tmp
